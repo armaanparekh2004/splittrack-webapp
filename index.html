@@ -970,6 +970,21 @@ body {
         </div>
       </div>
 
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+          <div class="field-label" style="margin-bottom:0">Relink old splits</div>
+          <span id="unlinkedSplitCount" style="font-family:var(--mono); font-size:12px; color:var(--ink-faint)"></span>
+        </div>
+        <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-top:10px; margin-bottom:14px">
+          Splits created before this feature existed show whatever name the transaction had at the moment you
+          split it, instead of staying in sync if you rename it later. This finds those old splits and links them
+          to their real transaction — matched only by exact date plus the person already being on that
+          transaction's split list, so nothing gets linked unless it's unambiguous. Anything it can't match
+          confidently with certainty is left alone, not guessed.
+        </p>
+        <button class="btn btn-secondary btn-sm" id="relinkSplitsBtn">Relink old splits</button>
+      </div>
+
       <div class="card card-pad">
         <div class="field-label" style="margin-bottom:14px">Storage summary</div>
         <div class="split-detail-row"><span>Transactions</span><span id="dataTxCount" style="font-family:var(--mono); font-weight:600">0</span></div>
@@ -1778,6 +1793,10 @@ function renderData() {
   const bytes = new Blob([JSON.stringify(state)]).size;
   document.getElementById('dataSize').textContent =
     bytes < 1024 ? bytes + ' B' : (bytes / 1024).toFixed(1) + ' KB';
+
+  const unlinked = state.splits.filter(s => !s.txId).length;
+  const badge = document.getElementById('unlinkedSplitCount');
+  badge.textContent = unlinked > 0 ? `${unlinked} unlinked` : 'all linked';
 }
 
 /* ================================================================
@@ -2282,6 +2301,65 @@ document.getElementById('importBackupFile').addEventListener('change', e => {
   reader.readAsText(file);
   e.target.value = '';
 });
+
+/* ================================================================
+   RELINK OLD SPLITS
+   ================================================================
+   Splits created before txId existed have no live link back to their
+   transaction, so renaming the transaction later doesn't update the
+   Splits page. This finds confident matches and backfills txId.
+
+   Matching rule, deliberately conservative — only links when ALL of:
+   - the split's date exactly equals the transaction's date
+   - the transaction is marked isSplit
+   - the split's person appears in that transaction's people list
+   - exactly ONE transaction satisfies all of the above (if more than one
+     transaction on the same day with the same person matches, it's
+     ambiguous and is left alone rather than guessed at)
+   This never invents a connection — every link is backed by data that
+   was already true before the match was made. */
+function relinkOldSplits() {
+  const unlinked = state.splits.filter(s => !s.txId);
+  if (!unlinked.length) {
+    showToast('No unlinked splits found — everything is already connected');
+    return;
+  }
+
+  let linked = 0;
+  let ambiguous = 0;
+
+  unlinked.forEach(split => {
+    const candidates = state.transactions.filter(tx =>
+      tx.isSplit &&
+      tx.date === split.date &&
+      Array.isArray(tx.people) &&
+      tx.people.includes(split.person)
+    );
+    if (candidates.length === 1) {
+      split.txId = candidates[0].id;
+      linked++;
+    } else if (candidates.length > 1) {
+      ambiguous++;
+    }
+    // candidates.length === 0: no match found, left alone silently — most
+    // likely the source transaction was deleted since the split was made.
+  });
+
+  saveState();
+  renderAll();
+
+  if (linked > 0 && ambiguous > 0) {
+    showToast(`Linked ${linked} split${linked === 1 ? '' : 's'} — ${ambiguous} left unresolved (multiple possible matches)`);
+  } else if (linked > 0) {
+    showToast(`Linked ${linked} split${linked === 1 ? '' : 's'} to their transactions`);
+  } else if (ambiguous > 0) {
+    showToast(`Found ${ambiguous} split${ambiguous === 1 ? '' : 's'} with multiple possible matches — left unresolved to avoid a wrong link`);
+  } else {
+    showToast('No confident matches found for the remaining unlinked splits');
+  }
+}
+
+document.getElementById('relinkSplitsBtn').addEventListener('click', relinkOldSplits);
 
 document.getElementById('clearAllBtn').addEventListener('click', () => {
   if (!confirm('This will permanently delete all transactions, splits, and people. Your saved proxy URL is kept. Export a backup first if you want to keep a copy. Continue?')) return;
