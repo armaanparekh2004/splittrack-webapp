@@ -1702,6 +1702,17 @@ function escapeHtml(s) {
 let expandedPerson = null;
 
 function renderSplits() {
+  // Resolves the CURRENT name/date from the linked transaction rather than
+  // the frozen snapshot taken when the split was created — this is what
+  // keeps the Splits page in sync after you rename something in Activity.
+  function liveInfo(splitEntry) {
+    const tx = splitEntry.txId ? state.transactions.find(t => t.id === splitEntry.txId) : null;
+    if (tx) return { merchant: tx.displayName || tx.merchant, date: tx.date };
+    // Transaction was deleted (or this is an older split from before txId
+    // existed) — fall back to whatever was snapshotted at the time.
+    return { merchant: splitEntry.merchant, date: splitEntry.date };
+  }
+
   const byPerson = splitsByPerson();
   const names = Object.keys(byPerson).sort();
   document.getElementById('splitsEmpty').style.display = names.length ? 'none' : 'block';
@@ -1709,7 +1720,9 @@ function renderSplits() {
 
   const wrap = document.getElementById('splitsList');
   wrap.innerHTML = names.map(name => {
-    const items = byPerson[name];
+    // Chronological: most recent first, using the LIVE date (in case it was
+    // ever edited) rather than trusting array insertion order.
+    const items = byPerson[name].slice().sort((a, b) => liveInfo(b).date.localeCompare(liveInfo(a).date));
     const total = items.reduce((s, i) => s + i.amount, 0);
     const isOpen = expandedPerson === name;
     return `<div>
@@ -1723,10 +1736,13 @@ function renderSplits() {
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform:rotate(${isOpen ? 90 : 0}deg); transition:transform 0.2s ease"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
       ${isOpen ? `<div style="padding:4px 20px 18px 78px; background:var(--paper)">
-        ${items.map(i => `<div class="split-detail-row">
-          <span>${escapeHtml(i.merchant)} <span style="color:var(--ink-faint)">· ${fmtDateShort(i.date)}</span></span>
+        ${items.map(i => {
+          const info = liveInfo(i);
+          return `<div class="split-detail-row">
+          <span>${escapeHtml(info.merchant)} <span style="color:var(--ink-faint)">· ${fmtDateShort(info.date)}</span></span>
           <span style="font-family:var(--mono); font-weight:600">${fmtPlain(i.amount)}</span>
-        </div>`).join('')}
+        </div>`;
+        }).join('')}
         <button class="btn btn-secondary btn-sm" style="margin-top:12px" data-settle="${escapeHtml(name)}">Mark all settled</button>
       </div>` : ''}
     </div>`;
@@ -1906,7 +1922,13 @@ document.getElementById('txDeleteBtn').addEventListener('click', () => {
   const tx = state.transactions.find(t => t.id === editingTxId);
   const txName = tx ? (tx.displayName || tx.merchant) : null;
   state.transactions = state.transactions.filter(t => t.id !== editingTxId);
-  if (txName) state.splits = state.splits.filter(s => s.merchant !== txName);
+  // Match by txId when available (reliable even after renames); fall back
+  // to the old name-matching behavior for splits created before txId
+  // existed, so nothing orphaned from before this fix gets stuck.
+  state.splits = state.splits.filter(s => {
+    if (s.txId) return s.txId !== editingTxId;
+    return txName ? s.merchant !== txName : true;
+  });
   saveState();
   closeModal('txModalOverlay');
   renderAll();
@@ -2176,7 +2198,10 @@ document.getElementById('splitSaveBtn').addEventListener('click', () => {
   }
 
   selectedPeople.forEach(p => {
-    state.splits.push({ id: uid(), person: p, merchant: tx.displayName || tx.merchant, amount: perPersonAmounts[p], date: tx.date, isSettled: false });
+    // txId links back to the source transaction so its name/date stay live —
+    // merchant/date here are a fallback snapshot only, used if the original
+    // transaction is ever deleted and the link can't be resolved.
+    state.splits.push({ id: uid(), txId: tx.id, person: p, merchant: tx.displayName || tx.merchant, amount: perPersonAmounts[p], date: tx.date, isSettled: false });
   });
   tx.isSplit = true;
   tx.people = selectedPeople.slice();
