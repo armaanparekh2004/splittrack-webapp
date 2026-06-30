@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SplitTrack — Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  --ink:        #0B1220;
+  --ink-soft:   #3A4252;
+  --ink-faint:  #646B7A;
+  --paper:      #FAF8F4;
+  --surface:    #FFFFFF;
+  --hairline:   #E8E4DC;
+  --hairline-strong: #D8D2C4;
+  --gold:       #C9A227;
+  --gold-soft:  #C9A22718;
+  --rust:       #9B2C2C;
+  --rust-soft:  #9B2C2C14;
+  --green:      #2F6B4F;
+  --green-soft: #2F6B4F14;
+
+  --display: 'Fraunces', serif;
+  --body: 'Inter', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(11,18,32,0.04), 0 4px 16px rgba(11,18,32,0.05);
+  --shadow-pop: 0 8px 32px rgba(11,18,32,0.14);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+
+body {
+  font-family: var(--body);
+  background: var(--paper);
+  color: var(--ink);
+  overflow: hidden;
+  height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+#app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  background: var(--ink);
+  color: var(--paper);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 10px 28px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(250,248,244,0.1);
+}
+.brand-mark {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
+  font-style: italic;
+  color: var(--gold);
+}
+.brand-name {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 20px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  color: rgba(250,248,244,0.55);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+  position: relative;
+}
+.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+.nav-item:hover { background: rgba(250,248,244,0.06); color: rgba(250,248,244,0.85); }
+.nav-item.active { background: rgba(250,248,244,0.1); color: var(--paper); }
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  background: var(--gold);
+  border-radius: 0 3px 3px 0;
+}
+.nav-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--gold);
+  color: var(--ink);
+  padding: 1px 6px;
+  border-radius: 100px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 0 10px;
+}
+.save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: rgba(250,248,244,0.4);
+  font-family: var(--mono);
+  padding-top: 14px;
+  border-top: 1px solid rgba(250,248,244,0.08);
+}
+.save-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+.save-dot.saving { background: var(--gold); animation: pulse 0.6s ease infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.sidebar-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.text-btn {
+  background: none;
+  border: none;
+  color: rgba(250,248,244,0.45);
+  font-family: var(--body);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.15s ease;
+}
+.text-btn:hover { color: var(--gold); }
+
+/* ---------- Main content ---------- */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 48px 56px 80px;
+  display: none;
+  animation: fadeUp 0.35s cubic-bezier(0.16,1,0.3,1);
+}
+.page.active { display: block; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 36px;
+}
+.page-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+.page-title {
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 100px;
+  padding: 11px 22px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.96); }
+.btn-primary { background: var(--ink); color: var(--paper); }
+.btn-primary:hover { box-shadow: var(--shadow-pop); }
+.btn-secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--hairline-strong); }
+.btn-secondary:hover { border-color: var(--ink); }
+.btn-ghost { background: transparent; color: var(--ink-soft); }
+.btn-ghost:hover { background: var(--hairline); }
+.btn-danger { background: var(--rust-soft); color: var(--rust); }
+.btn-danger:hover { background: var(--rust); color: white; }
+.btn-sm { padding: 7px 14px; font-size: 12.5px; }
+.btn svg { width: 15px; height: 15px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+/* ============================================================
+   CARDS / SURFACES
+   ============================================================ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.card-pad { padding: 24px; }
+
+/* ---------- Hero stat (ledger-style amount with signature underline) ---------- */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.hero-card {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 28px 28px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.hero-card::before {
+  content: '';
+  position: absolute;
+  top: -40%; right: -10%;
+  width: 220px; height: 220px;
+  background: radial-gradient(circle, var(--gold-soft) 0%, transparent 70%);
+  pointer-events: none;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(250,248,244,0.5);
+  margin-bottom: 10px;
+}
+.stat-amount {
+  font-family: var(--display);
+  font-size: 46px;
+  font-weight: 500;
+  letter-spacing: -1px;
+  line-height: 1;
+  display: flex;
+  align-items: baseline;
+}
+.stat-amount .cents { font-size: 0.5em; opacity: 0.6; }
+.ledger-underline {
+  width: 100%;
+  height: 8px;
+  margin-top: 14px;
+  position: relative;
+}
+.ledger-underline svg { width: 100%; height: 100%; overflow: visible; }
+.ledger-underline path {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 300;
+  stroke-dashoffset: 300;
+  animation: drawLine 0.9s cubic-bezier(0.65,0,0.35,1) forwards;
+  animation-delay: 0.2s;
+}
+@keyframes drawLine { to { stroke-dashoffset: 0; } }
+.stat-sub {
+  font-size: 12.5px;
+  color: rgba(250,248,244,0.45);
+  margin-top: 10px;
+}
+
+.hero-card.light {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+.hero-card.light .stat-label { color: var(--ink-faint); }
+.hero-card.light .stat-sub { color: var(--ink-faint); }
+.hero-card.light::before { display: none; }
+.hero-card.light .ledger-underline path { stroke: var(--ink); opacity: 0.15; }
+
+.people-row {
+  display: flex;
+  gap: -8px;
+  margin-top: 14px;
+}
+.avatar-stack { display: flex; }
+.avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--gold-soft);
+  border: 2px solid var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -8px;
+}
+.avatar:first-child { margin-left: 0; }
+
+/* ---------- Category bars ---------- */
+.cat-row {
+  display: grid;
+  grid-template-columns: 24px 110px 1fr 60px;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+}
+.cat-row + .cat-row { border-top: 1px solid var(--hairline); }
+.cat-emoji { display: flex; align-items: center; justify-content: center; }
+.cat-emoji svg { width: 17px; height: 17px; }
+.cat-name { font-size: 13.5px; color: var(--ink-soft); font-weight: 500; }
+.cat-track { height: 6px; background: var(--hairline); border-radius: 3px; overflow: hidden; }
+.cat-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.16,1,0.3,1); }
+.cat-amount { font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; }
+
+/* ============================================================
+   ACTIVITY / TRANSACTION LIST
+   ============================================================ */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 22px;
+  align-items: center;
+}
+.search-box {
+  flex: 1;
+  position: relative;
+  max-width: 320px;
+}
+.search-box svg {
+  position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; color: var(--ink-faint);
+}
+.search-box input {
+  width: 100%;
+  padding: 10px 14px 10px 36px;
+  border-radius: 100px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--ink);
+  transition: border-color 0.15s ease;
+}
+.search-box input:focus { border-color: var(--ink); outline: none; }
+.filter-pills { display: flex; gap: 6px; }
+.pill {
+  padding: 9px 16px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: all 0.18s cubic-bezier(0.34,1.56,0.64,1);
+  user-select: none;
+}
+.pill:hover { border-color: var(--ink); }
+.pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.spacer { flex: 1; }
+
+.tx-list { display: flex; flex-direction: column; }
+.tx-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.12s ease;
+  position: relative;
+}
+.tx-row:hover { background: var(--hairline); }
+.tx-row + .tx-row { border-top: 1px solid var(--hairline); }
+.tx-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.tx-icon svg { width: 19px; height: 19px; }
+.tx-info { min-width: 0; }
+.tx-name-row { display: flex; align-items: center; gap: 7px; }
+.tx-name { font-size: 14.5px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-meta { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+.tx-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.tx-tag.split { background: var(--gold-soft); color: #8a6b10; }
+.tx-tag.refunded { background: var(--rust-soft); color: var(--rust); }
+.tx-amounts { text-align: right; }
+.tx-amount { font-family: var(--mono); font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.tx-amount.refunded-amt { text-decoration: line-through; color: var(--ink-faint); }
+.tx-amount-sub { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+.tx-row.is-refunded { opacity: 0.55; }
+
+.list-footer-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-faint);
+  padding: 18px 0 4px;
+}
+
+/* ============================================================
+   SPLITS / PEOPLE
+   ============================================================ */
+.person-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.12s ease;
+}
+.person-card:hover { background: var(--hairline); }
+.person-card + .person-card { border-top: 1px solid var(--hairline); }
+.avatar-lg {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.person-name { font-size: 15px; font-weight: 600; }
+.person-sub { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+.person-amount { font-family: var(--mono); font-weight: 700; font-size: 16px; margin-left: auto; }
+.chevron { color: var(--ink-faint); width: 16px; height: 16px; }
+
+.split-detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 11px 0;
+  font-size: 13.5px;
+}
+.split-detail-row + .split-detail-row { border-top: 1px solid var(--hairline); }
+
+/* ============================================================
+   EMPTY STATES
+   ============================================================ */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--ink-faint);
+}
+.empty-state .emoji { display: flex; justify-content: center; margin-bottom: 14px; color: var(--ink-faint); }
+.empty-state .emoji svg { width: 40px; height: 40px; }
+.empty-state h3 { font-family: var(--display); font-size: 19px; color: var(--ink); margin-bottom: 6px; font-weight: 500; }
+.empty-state p { font-size: 13.5px; }
+
+/* ============================================================
+   MODAL / SHEET
+   ============================================================ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(11,18,32,0.45);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.modal-overlay.show { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface);
+  border-radius: 20px;
+  width: 480px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-pop);
+  transform: translateY(16px) scale(0.97);
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.modal-overlay.show .modal { transform: translateY(0) scale(1); }
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--hairline);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.modal-title { font-family: var(--display); font-size: 18px; font-weight: 500; }
+.modal-close {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--ink-faint);
+  background: var(--hairline);
+  border: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.modal-close:hover { background: var(--ink); color: var(--paper); }
+.modal-body { padding: 22px 24px 26px; }
+
+.field-group { margin-bottom: 18px; }
+.field-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+  display: block;
+}
+.field-input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline-strong);
+  font-family: var(--body);
+  font-size: 14.5px;
+  color: var(--ink);
+  background: var(--paper);
+  transition: border-color 0.15s ease;
+}
+.field-input:focus { border-color: var(--ink); outline: none; }
+.field-input.mono { font-family: var(--mono); }
+.field-row { display: flex; gap: 10px; }
+.field-row .field-group { flex: 1; }
+
+.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: 100px;
+  border: 1.5px solid var(--hairline-strong);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  background: var(--surface);
+}
+.chip:hover { border-color: var(--ink); }
+.chip.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip .avatar { width: 20px; height: 20px; font-size: 9px; }
+.chip-add {
+  border-style: dashed;
+  color: var(--ink-faint);
+}
+
+.cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cat-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 6px;
+  border-radius: 12px;
+  border: 1.5px solid var(--hairline-strong);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.cat-chip span.e { display: flex; }
+.cat-chip span.e svg { width: 20px; height: 20px; }
+.cat-chip:hover { border-color: var(--ink); }
+.cat-chip.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.summary-box {
+  background: var(--gold-soft);
+  border: 1px solid #C9A22740;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 6px;
+}
+.summary-box .big { font-family: var(--mono); font-weight: 700; font-size: 15px; }
+.summary-box .small { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+
+.modal-footer {
+  display: flex; gap: 10px; justify-content: flex-end;
+  padding: 18px 24px 22px;
+  border-top: 1px solid var(--hairline);
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast-wrap {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+.toast-wrap.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: all; }
+.toast {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 12px 22px;
+  border-radius: 100px;
+  box-shadow: var(--shadow-pop);
+  display: flex; align-items: center; gap: 8px;
+}
+.toast svg { width: 15px; height: 15px; color: var(--gold); }
+
+/* ============================================================
+   DUPLICATE REVIEW BANNER
+   ============================================================ */
+.dupe-banner {
+  background: var(--gold-soft);
+  border: 1px solid #C9A22740;
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.dupe-banner svg { width: 20px; height: 20px; color: var(--gold); flex-shrink: 0; }
+.dupe-banner-text { flex: 1; font-size: 13.5px; }
+.dupe-banner-text b { font-weight: 700; }
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 100px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+.icon { width: 1em; height: 1em; display: inline-block; vertical-align: middle; flex-shrink: 0; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 880px) {
+  .sidebar { width: 76px; padding: 24px 10px; }
+  .brand-name, .nav-item span.label, .sidebar-footer { display: none; }
+  .nav-item { justify-content: center; }
+  .page { padding: 32px 20px 60px; }
+  .hero-grid { grid-template-columns: 1fr; }
+  .cat-row { grid-template-columns: 24px 80px 1fr 50px; gap: 8px; }
+  .cat-name { font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ============ SIDEBAR ============ -->
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">§</span>
+      <span class="brand-name">SplitTrack</span>
+    </div>
+    <div class="nav">
+      <div class="nav-item active" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span class="label">Overview</span>
+      </div>
+      <div class="nav-item" data-page="activity">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>
+        <span class="label">Activity</span>
+        <span class="nav-badge" id="navAiDot" style="display:none; background:var(--gold)" title="AI sorting…">···</span>
+        <span class="nav-badge" id="navTxCount" style="display:none"></span>
+      </div>
+      <div class="nav-item" data-page="splits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><circle cx="17.5" cy="8.5" r="2.6"/><path d="M15 14.2c2.7.3 4.5 2.4 4.8 5.3"/></svg>
+        <span class="label">Splits</span>
+        <span class="nav-badge" id="navSplitCount" style="display:none"></span>
+      </div>
+      <div class="nav-item" data-page="data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+        <span class="label">Data</span>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-actions">
+        <button class="text-btn" id="importCsvBtn">Import Chase CSV</button>
+        <input type="file" id="importCsvFile" accept=".csv" style="display:none">
+        <button class="text-btn" id="exportBtn">Export backup (.json)</button>
+        <button class="text-btn" id="importBackupBtn">Import backup</button>
+        <input type="file" id="importBackupFile" accept=".json" style="display:none">
+      </div>
+      <div class="save-indicator">
+        <span class="save-dot" id="saveDot"></span>
+        <span id="saveText">Saved locally</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <!-- ---------- OVERVIEW ---------- -->
+    <section class="page active" id="page-overview">
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow" id="overviewMonth">JUNE 2026</div>
+          <div class="page-title">Overview</div>
+        </div>
+        <div style="display:flex; gap:10px">
+          <button class="btn btn-secondary" id="importCsvBtnTop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import CSV
+          </button>
+          <button class="btn btn-primary" id="addTxBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add transaction
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-grid">
+        <div class="hero-card">
+          <div class="stat-label">My real spend</div>
+          <div class="stat-amount" id="heroSpend">$0<span class="cents">.00</span></div>
+          <div class="ledger-underline"><svg viewBox="0 0 200 8" preserveAspectRatio="none"><path d="M2,5 Q50,1 100,5 T198,4"/></svg></div>
+          <div class="stat-sub" id="heroSpendSub">of $0.00 charged</div>
+        </div>
+        <div class="hero-card light">
+          <div class="stat-label">Owed to you</div>
+          <div class="stat-amount" id="heroOwed">$0<span class="cents">.00</span></div>
+          <div class="ledger-underline"><svg viewBox="0 0 200 8" preserveAspectRatio="none"><path d="M2,4 Q50,7 100,3 T198,5"/></svg></div>
+          <div class="people-row" id="heroPeople"></div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-top:20px">
+        <div class="field-label" style="margin-bottom:14px">By category</div>
+        <div id="categoryBars"></div>
+        <div class="empty-state" id="categoryEmpty" style="display:none; padding:36px 0;">
+          <span class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l1.8 3.2a2 2 0 0 0 1.75 1h.9a2 2 0 0 0 1.75-1L16 12h4"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5.5A2.5 2.5 0 0 1 9.5 3h5A2.5 2.5 0 0 1 17 5.5V7"/></svg></span>
+          <h3>No transactions yet</h3>
+          <p>Add one to start tracking your real spend.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- ACTIVITY ---------- -->
+    <section class="page" id="page-activity">
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">THE LEDGER</div>
+          <div class="page-title">Activity</div>
+        </div>
+        <div style="display:flex; gap:10px">
+          <button class="btn btn-secondary" id="importCsvBtnActivity">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import CSV
+          </button>
+          <button class="btn btn-primary" id="addTxBtn2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add transaction
+          </button>
+        </div>
+      </div>
+
+      <div id="dupeBannerWrap"></div>
+
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="searchInput" placeholder="Search transactions…">
+        </div>
+        <div class="filter-pills">
+          <div class="pill active" data-filter="all">All</div>
+          <div class="pill" data-filter="split">Split</div>
+          <div class="pill" data-filter="personal">Personal</div>
+          <div class="pill" data-filter="refunded">Refunded</div>
+        </div>
+      </div>
+
+      <div class="tx-list" id="txList"></div>
+      <div class="empty-state" id="txEmpty" style="display:none">
+        <span class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l1.8 3.2a2 2 0 0 0 1.75 1h.9a2 2 0 0 0 1.75-1L16 12h4"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5.5A2.5 2.5 0 0 1 9.5 3h5A2.5 2.5 0 0 1 17 5.5V7"/></svg></span>
+        <h3>No transactions</h3>
+        <p>Add your first transaction to get started.</p>
+      </div>
+      <div class="list-footer-hint" id="txHint" style="display:none">Click a transaction to split it · hold Alt and click to edit</div>
+    </section>
+
+    <!-- ---------- SPLITS ---------- -->
+    <section class="page" id="page-splits">
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">SETTLE UP</div>
+          <div class="page-title">Splits</div>
+        </div>
+      </div>
+      <div class="card" id="splitsCard">
+        <div id="splitsList"></div>
+      </div>
+      <div class="empty-state" id="splitsEmpty" style="display:none">
+        <span class="emoji"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.4 1.4 2.7-.3 1 2.5 2.5 1-.3 2.7L21.7 12l-1.4 2.4.3 2.7-2.5 1-1 2.5-2.7-.3L12 21.7l-2.4-1.4-2.7.3-1-2.5-2.5-1 .3-2.7L2.3 12l1.4-2.4-.3-2.7 2.5-1 1-2.5 2.7.3Z"/><path d="M8.5 12.2l2.3 2.3 4.7-4.9"/></svg></span>
+        <h3>All settled up</h3>
+        <p>Split a transaction from the Activity tab to start a tab with someone.</p>
+      </div>
+    </section>
+
+    <!-- ---------- DATA ---------- -->
+    <section class="page" id="page-data">
+      <div class="page-header">
+        <div>
+          <div class="page-eyebrow">YOUR DATA</div>
+          <div class="page-title">Local storage</div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div class="field-label" style="margin-bottom:4px">Where this lives</div>
+        <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-top:8px">
+          Everything you enter is saved automatically to this browser's local storage — nothing leaves your machine.
+          That means it won't sync to your phone yet, and clearing your browser data will erase it. Export a backup
+          regularly, especially before clearing your browser cache or switching computers.
+        </p>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div class="field-label" style="margin-bottom:4px">Import from Chase</div>
+        <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-top:8px; margin-bottom:16px">
+          Export a CSV from chase.com → your account → Activity → Download, then import it here.
+          New transactions merge with what's already saved — nothing is duplicated or overwritten.
+        </p>
+        <button class="btn btn-secondary" id="importCsvBtn2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import Chase CSV
+        </button>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+          <div class="field-label" style="margin-bottom:0">AI categorization</div>
+          <div class="save-indicator" style="border-top:none; padding-top:0">
+            <span class="save-dot" id="aiStatusDot" style="background:var(--ink-faint)"></span>
+            <span id="aiStatusText" style="color:var(--ink-faint)">Checking…</span>
+          </div>
+        </div>
+        <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-top:10px; margin-bottom:14px">
+          Browsers can't call Anthropic's API directly, so categorization goes through a small serverless function
+          deployed alongside this page — it holds your API key server-side and is the only thing that talks to
+          Anthropic. If you deployed this app and its <span style="font-family:var(--mono)">/api/categorize</span>
+          function together on Vercel, this works automatically with no setup below. Running this page locally
+          as a plain file instead, or hosting the API elsewhere? Paste that URL here to override.
+        </p>
+        <div class="field-row" style="align-items:flex-end">
+          <div class="field-group" style="margin-bottom:0">
+            <label class="field-label">Proxy URL override (optional)</label>
+            <input class="field-input mono" id="proxyUrlInput" type="text" placeholder="/api/categorize" autocomplete="off">
+          </div>
+          <button class="btn btn-primary btn-sm" id="proxyUrlSaveBtn" style="margin-bottom:1px">Save</button>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:10px">
+          <button class="btn btn-ghost btn-sm" id="reEnrichBtn">Re-sort &amp; rename all transactions</button>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:10px">
+          <button class="btn btn-ghost btn-sm" id="testProxyBtn">Test connection</button>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+          <div class="field-label" style="margin-bottom:0">Backup &amp; restore</div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button class="btn btn-primary" id="exportBtn2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export backup
+          </button>
+          <button class="btn btn-secondary" id="importBackupBtn2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import backup
+          </button>
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="field-label" style="margin-bottom:14px">Storage summary</div>
+        <div class="split-detail-row"><span>Transactions</span><span id="dataTxCount" style="font-family:var(--mono); font-weight:600">0</span></div>
+        <div class="split-detail-row"><span>Split entries</span><span id="dataSplitCount" style="font-family:var(--mono); font-weight:600">0</span></div>
+        <div class="split-detail-row"><span>People tracked</span><span id="dataPeopleCount" style="font-family:var(--mono); font-weight:600">0</span></div>
+        <div class="split-detail-row"><span>Approx. size</span><span id="dataSize" style="font-family:var(--mono); font-weight:600">0 KB</span></div>
+        <div style="margin-top:18px; padding-top:18px; border-top:1px solid var(--hairline)">
+          <button class="btn btn-danger btn-sm" id="clearAllBtn">Clear all data</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ MODAL: Add / Edit Transaction ============ -->
+<div class="modal-overlay" id="txModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="txModalTitle">Add transaction</div>
+      <button class="modal-close" data-close="txModalOverlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field-group">
+        <label class="field-label">Merchant</label>
+        <input class="field-input" id="txMerchant" placeholder="e.g. Zahav, Uber Eats…">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Total amount</label>
+          <input class="field-input mono" id="txTotal" placeholder="0.00" inputmode="decimal">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date</label>
+          <input class="field-input" id="txDate" type="date">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Category</label>
+        <div class="cat-grid" id="catGrid"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="txModalOverlay">Cancel</button>
+      <button class="btn btn-danger" id="txDeleteBtn" style="display:none">Delete</button>
+      <button class="btn btn-primary" id="txSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: Split ============ -->
+<div class="modal-overlay" id="splitModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Split transaction</div>
+      <button class="modal-close" data-close="splitModalOverlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="card card-pad" style="margin-bottom:18px; background:var(--paper)">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <div>
+            <div style="font-weight:600; font-size:15px" id="splitTxName">—</div>
+            <div style="font-size:12.5px; color:var(--ink-faint); margin-top:2px" id="splitTxDate">—</div>
+          </div>
+          <div style="font-family:var(--mono); font-weight:700; font-size:17px" id="splitTxTotal">$0.00</div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">My share ($)</label>
+        <input class="field-input mono" id="splitMyShare" placeholder="0.00" inputmode="decimal">
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Split with</label>
+        <div class="chip-grid" id="splitPeopleChips"></div>
+      </div>
+
+      <div class="summary-box" id="splitSummary" style="display:none">
+        <div class="big" id="splitSummaryBig">—</div>
+        <div class="small" id="splitSummarySmall">—</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="splitModalOverlay">Cancel</button>
+      <button class="btn btn-primary" id="splitSaveBtn" disabled>Confirm split</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: Add Person ============ -->
+<div class="modal-overlay" id="personModalOverlay">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Add a person</div>
+      <button class="modal-close" data-close="personModalOverlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field-group" style="margin-bottom:6px">
+        <label class="field-label">Name</label>
+        <input class="field-input" id="newPersonName" placeholder="e.g. Sparsh">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="personModalOverlay">Cancel</button>
+      <button class="btn btn-primary" id="personSaveBtn">Add person</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast-wrap" id="toastWrap">
+  <div class="toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toastMsg">Saved</span>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   SPLITTRACK WEB — standalone, localStorage-backed
+   No backend. No network calls. Every mutation is saved immediately
+   and visibly (see the save indicator in the sidebar).
+   ================================================================ */
+
+const STORAGE_KEY = 'splittrack_web_v1';
+
+const CATEGORIES = [
+  { id: 'dining',        label: 'Dining',        icon: 'utensils',  color: '#9B2C2C' },
+  { id: 'groceries',     label: 'Groceries',     icon: 'cart',      color: '#2F6B4F' },
+  { id: 'transport',     label: 'Transport',     icon: 'car',       color: '#2563AB' },
+  { id: 'subscriptions', label: 'Subscriptions', icon: 'repeat',    color: '#7B3F9E' },
+  { id: 'shopping',      label: 'Shopping',      icon: 'bag',       color: '#C9762B' },
+  { id: 'entertainment', label: 'Entertainment', icon: 'film',      color: '#B23A78' },
+  { id: 'health',        label: 'Health',        icon: 'pulse',     color: '#1B8A7D' },
+  { id: 'other',         label: 'Other',         icon: 'card',      color: '#6B7280' },
+];
+
+/* Inline SVG line-icon set — no emoji anywhere in this app.
+   Each returns a self-contained <svg> string sized by its container via CSS. */
+const ICONS = {
+  utensils: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V3"/><path d="M9 13v8"/><path d="M16 3c-1.1 1.6-1.5 3.6-1.5 5.5 0 2 1 3.5 2.5 3.5s2.5-1.5 2.5-3.5c0-1.9-.4-3.9-1.5-5.5"/><path d="M17.5 12.5V21"/></svg>',
+  cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.4 12.2a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L21 7H6"/></svg>',
+  car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16V11l1.8-4.5A2 2 0 0 1 7.7 5h8.6a2 2 0 0 1 1.9 1.5L20 11v5"/><path d="M4 16h16v2.5a1.5 1.5 0 0 1-1.5 1.5h-1a1.5 1.5 0 0 1-1.5-1.5V17H8v1.5A1.5 1.5 0 0 1 6.5 20h-1A1.5 1.5 0 0 1 4 18.5V16Z"/><circle cx="7.5" cy="13" r="1"/><circle cx="16.5" cy="13" r="1"/></svg>',
+  repeat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.5l4 4-4 4"/><path d="M21 6.5H8a5 5 0 0 0-5 5"/><path d="M7 21.5l-4-4 4-4"/><path d="M3 17.5h13a5 5 0 0 0 5-5"/></svg>',
+  bag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1.2 13.2a1.5 1.5 0 0 1-1.5 1.8H6.3a1.5 1.5 0 0 1-1.5-1.8L6 7Z"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7"/></svg>',
+  film: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="1.5"/><path d="M3 9h18M3 15h18M8 4.5v15M16 4.5v15"/></svg>',
+  pulse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3.5l2-5 4 10 2-5H21"/></svg>',
+  card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><path d="M6 14.5h4"/></svg>',
+  receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h12v18l-2.5-1.5L13 20.5 10.5 19 8 20.5 5.5 19V2.5Z" stroke-linejoin="round"/><path d="M8.5 7.5h7M8.5 11h7M8.5 14.5h4"/></svg>',
+  inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l1.8 3.2a2 2 0 0 0 1.75 1h.9a2 2 0 0 0 1.75-1L16 12h4"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5.5A2.5 2.5 0 0 1 9.5 3h5A2.5 2.5 0 0 1 17 5.5V7"/></svg>',
+  confetti: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.4 1.4 2.7-.3 1 2.5 2.5 1-.3 2.7L21.7 12l-1.4 2.4.3 2.7-2.5 1-1 2.5-2.7-.3L12 21.7l-2.4-1.4-2.7.3-1-2.5-2.5-1 .3-2.7L2.3 12l1.4-2.4-.3-2.7 2.5-1 1-2.5 2.7.3Z"/><path d="M8.5 12.2l2.3 2.3 4.7-4.9"/></svg>',
+  refund: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 3v6h6"/></svg>',
+};
+function iconHtml(name, extraClass) { return ICONS[name] ? ICONS[name].replace('<svg ', `<svg class="icon ${extraClass||''}" `) : ''; }
+const catById = id => CATEGORIES.find(c => c.id === id);
+
+/* ---------------- State ---------------- */
+let state = {
+  transactions: [],   // {id, merchant, date, total, myShare, category, isSplit, isRefunded, people:[], isSettled}
+  splits: [],          // {id, person, merchant, amount, date, isSettled}
+  people: ['Sparsh', 'Harshil', 'Uday', 'Arya'],
+  pendingDuplicateMatches: [],  // refund/return pairs found at CSV import, awaiting confirmation
+  proxyUrl: '/api/categorize', // same-domain function by default; override only if hosting the API elsewhere
+};
+let isEnriching = false; // not persisted — resets each session
+
+function uid() { return 'id_' + Math.random().toString(36).slice(2, 11) + Date.now().toString(36); }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      state = Object.assign(state, parsed);
+    }
+  } catch (e) {
+    console.warn('Could not load saved data, starting fresh.', e);
+  }
+}
+
+let saveTimer = null;
+function saveState() {
+  const dot = document.getElementById('saveDot');
+  const txt = document.getElementById('saveText');
+  dot.classList.add('saving');
+  txt.textContent = 'Saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      dot.classList.remove('saving');
+      const now = new Date();
+      txt.textContent = 'Saved ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      dot.classList.remove('saving');
+      txt.textContent = 'Save failed — storage full?';
+      console.error(e);
+    }
+  }, 250);
+}
+
+/* ---------------- Helpers ---------------- */
+function fmt(n) {
+  const v = (n || 0).toFixed(2);
+  const [whole, cents] = v.split('.');
+  return { whole: '$' + Number(whole).toLocaleString(), cents: '.' + cents };
+}
+function fmtPlain(n) { return '$' + (n || 0).toFixed(2); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+function initials(name) { return (name || '?').trim().charAt(0).toUpperCase(); }
+function showToast(msg) {
+  document.getElementById('toastMsg').textContent = msg;
+  const w = document.getElementById('toastWrap');
+  w.classList.add('show');
+  clearTimeout(w._t);
+  w._t = setTimeout(() => w.classList.remove('show'), 2200);
+}
+
+/* ================================================================
+   CSV IMPORT (Chase format) — runs entirely in the browser, no upload
+   ================================================================ */
+function splitCSVLine(line, delimiter) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (!inQuotes && ch === delimiter) { result.push(current); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+function formatCsvDate(raw) {
+  // Accepts M/d/yyyy, MM/dd/yyyy, yyyy-MM-dd → returns yyyy-MM-dd for storage
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, m, d, y] = slashMatch;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return raw;
+  return null;
+}
+
+function categoryFromChase(s) {
+  const l = (s || '').toLowerCase();
+  if (l.includes('food') || l.includes('drink')) return 'dining';
+  if (l.includes('grocer')) return 'groceries';
+  if (l.includes('travel')) return 'transport';
+  if (l.includes('shopping')) return 'shopping';
+  if (l.includes('health') || l.includes('medical')) return 'health';
+  if (l.includes('entertainment')) return 'entertainment';
+  return null;
+}
+
+/* Parses a Chase CSV into { debits, credits }. Credits are not discarded —
+   they're matched against debits to detect refunds before anything is dropped. */
+function parseChaseCSV(raw) {
+  const cleaned = raw
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const lines = cleaned.trim().split('\n');
+  if (!lines.length) return { debits: [], credits: [] };
+  const headerLine = lines[0];
+  const delim = headerLine.includes('\t') ? '\t' : ',';
+  const headers = headerLine.split(delim).map(h => h.trim().replace(/^"|"$/g, ''));
+  const colIndex = name => headers.indexOf(name);
+
+  function col(row, name) {
+    const i = colIndex(name);
+    if (i === -1 || i >= row.length) return '';
+    return row[i].trim().replace(/^"|"$/g, '').trim();
+  }
+
+  const debits = [];
+  const credits = [];
+  for (const line of lines.slice(1)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const row = splitCSVLine(trimmed, delim);
+    let merchant = col(row, 'Description');
+    if (!merchant) continue;
+    merchant = merchant.replace(/\s+/g, ' ');
+    const amountStr = col(row, 'Amount').replace(/[^0-9.\-]/g, '');
+    const rawAmount = parseFloat(amountStr);
+    if (isNaN(rawAmount)) continue;
+    const isCredit = rawAmount > 0;
+    const amount = Math.abs(rawAmount);
+    if (amount <= 0) continue;
+    const dateRaw = col(row, 'Transaction Date') || col(row, 'Post Date');
+    const date = formatCsvDate(dateRaw) || todayISO();
+    if (isCredit) {
+      credits.push({ merchant, date, amount });
+    } else {
+      const category = categoryFromChase(col(row, 'Category'));
+      debits.push({
+        id: uid(), merchant, displayName: null, date, total: amount, myShare: amount,
+        category, isSplit: false, isRefunded: false, people: [], isSettled: false,
+      });
+    }
+  }
+  return { debits, credits };
+}
+
+function daysBetween(isoA, isoB) {
+  const a = new Date(isoA + 'T00:00:00');
+  const b = new Date(isoB + 'T00:00:00');
+  return Math.abs(Math.round((a - b) / 86400000));
+}
+
+/* Runs the CSV through the parser, merges new debits into state (de-duped by
+   merchant+date+amount), and finds debit/credit pairs that look like refunds —
+   surfaced in the dupe banner for confirmation rather than silently dropped. */
+function importCSVText(text, fileName) {
+  const { debits, credits } = parseChaseCSV(text);
+  if (!debits.length && !credits.length) {
+    showToast('No transactions found in that file');
+    return;
+  }
+
+  const existing = new Set(state.transactions.map(t => `${t.merchant}|${t.date}|${t.total}`));
+  const newRows = debits.filter(t => !existing.has(`${t.merchant}|${t.date}|${t.total}`));
+
+  // Match credits to newly-imported debits within a 14-day window and same amount
+  const matches = [];
+  const matchedIds = new Set();
+  for (const credit of credits) {
+    const match = newRows.find(d =>
+      !matchedIds.has(d.id) &&
+      Math.abs(d.total - credit.amount) < 0.01 &&
+      daysBetween(d.date, credit.date) <= 14
+    );
+    if (match) {
+      matches.push({ id: uid(), debitId: match.id, creditDate: credit.date });
+      matchedIds.add(match.id);
+    }
+  }
+
+  if (!newRows.length) {
+    showToast('No new transactions — already imported');
+    return;
+  }
+
+  state.transactions.unshift(...newRows);
+  state.pendingDuplicateMatches.push(...matches);
+  saveState();
+  renderAll();
+  showToast(`Imported ${newRows.length} transaction${newRows.length === 1 ? '' : 's'}`);
+
+  // Kick off AI categorization for the freshly imported rows, if a key is set
+  enrichTransactions(newRows);
+}
+
+/* ================================================================
+   AI CATEGORIZATION — calls a serverless function on this same Vercel
+   deployment (api/categorize.js), not Anthropic directly
+   ================================================================
+   The function holds the real Anthropic key as a server-side
+   environment variable — it never touches this browser. Browsers
+   can't call api.anthropic.com directly (that domain doesn't send the
+   CORS headers a webpage's fetch() needs), which is why this function
+   is required at all rather than calling Anthropic straight from here.
+   This only works when index.html and api/categorize.js are deployed
+   together as one Vercel project — opening this file locally as a
+   plain file has no server behind it, so this will always say
+   "unreachable" until it's actually deployed. */
+let proxyStatus = 'unknown'; // 'unknown' | 'connected' | 'unreachable'
+
+function setEnriching(on) {
+  isEnriching = on;
+  const dot = document.getElementById('aiStatusDot');
+  const txt = document.getElementById('aiStatusText');
+  if (dot && txt) {
+    dot.classList.toggle('saving', on);
+    if (on) {
+      txt.textContent = 'AI sorting…';
+    } else if (proxyStatus === 'connected') {
+      txt.textContent = 'AI categorization on';
+      dot.style.background = 'var(--green)';
+    } else if (proxyStatus === 'unreachable') {
+      txt.textContent = 'Not reachable — see below';
+      dot.style.background = 'var(--rust)';
+    } else {
+      txt.textContent = 'Checking…';
+      dot.style.background = 'var(--ink-faint)';
+    }
+  }
+  const navDot = document.getElementById('navAiDot');
+  if (navDot) navDot.style.display = on ? 'inline-block' : 'none';
+}
+
+/* Lightweight check run once on page load — confirms api/categorize.js is
+   actually deployed and responding before the user tries to import anything. */
+async function checkProxyConnectivity() {
+  if (!state.proxyUrl) { proxyStatus = 'unreachable'; setEnriching(false); return; }
+  try {
+    const res = await fetch(state.proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions: [] }), // empty payload — just checking the function exists
+    });
+    // Any JSON response (even a 400 "no transactions") means the function is alive.
+    // A 404 means there's no function at that path at all — true "unreachable".
+    proxyStatus = res.status === 404 ? 'unreachable' : 'connected';
+  } catch {
+    proxyStatus = 'unreachable';
+  }
+  setEnriching(false);
+}
+
+function fallbackToRawNames(toEnrich) {
+  toEnrich.forEach(t => {
+    const tx = state.transactions.find(x => x.id === t.id);
+    if (tx) {
+      if (!tx.category) tx.category = 'other';
+      if (!tx.displayName) tx.displayName = tx.merchant;
+    }
+  });
+  saveState();
+  renderAll();
+}
+
+/* enrichTransactions(rows, force)
+   - rows: which transactions to consider. Omit to consider everything.
+   - force: when true, re-sends transactions even if they already have a
+     category and displayName, and OVERWRITES both with whatever the AI
+     returns. This is what "Re-sort all transactions" needs — without it,
+     already-named transactions (including every manually-added one, and
+     anything that previously fell back to its raw merchant name) would
+     never get touched again. Plain imports stay force:false since new
+     rows are always blank on arrival anyway. */
+async function enrichTransactions(rows, force = false) {
+  const candidates = rows && rows.length ? rows : state.transactions;
+  const toEnrich = force ? candidates : candidates.filter(t => !t.category || !t.displayName);
+  if (!toEnrich.length) return;
+  if (!state.proxyUrl) {
+    if (!force) fallbackToRawNames(toEnrich); // don't clobber existing names with raw merchant strings on a forced re-sort with no proxy
+    else showToast('No proxy configured — nothing to re-sort with');
+    return;
+  }
+
+  setEnriching(true);
+  const payload = { transactions: toEnrich.map(t => ({ id: t.id, merchant: t.merchant, total: t.total })) };
+
+  try {
+    const res = await fetch(state.proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    // Read the body once as text so we can show a real message either way —
+    // a non-OK response from a proxy is often a useful JSON error, not junk.
+    const bodyText = await res.text();
+    let body;
+    try { body = JSON.parse(bodyText); } catch { body = null; }
+
+    if (!res.ok) {
+      const detail = body?.error || bodyText.slice(0, 200) || `HTTP ${res.status}`;
+      throw new Error(detail);
+    }
+    if (!body || !body.result) {
+      throw new Error('Proxy responded but sent no result — check the proxy is the categorize endpoint, not just the base URL');
+    }
+
+    const result = body.result;
+    for (const t of toEnrich) {
+      const tx = state.transactions.find(x => x.id === t.id);
+      if (!tx) continue;
+      const entry = result[t.id];
+      if (entry) {
+        if (entry.category) tx.category = entry.category;
+        // force=true overwrites an existing name; otherwise only fill if blank
+        if (entry.displayName && (force || !tx.displayName)) tx.displayName = entry.displayName;
+      }
+      if (!tx.category) tx.category = 'other';
+      if (!tx.displayName) tx.displayName = tx.merchant;
+    }
+    saveState();
+    renderAll();
+    showToast(`AI sorted ${toEnrich.length} transaction${toEnrich.length === 1 ? '' : 's'}`);
+  } catch (err) {
+    console.error('AI categorization failed:', err);
+    if (!force) fallbackToRawNames(toEnrich); // on a forced re-sort, leave existing data alone rather than overwrite with raw names on failure
+    const msg = (err && err.message) ? err.message : 'Unknown error';
+    showToast(`AI categorization failed: ${msg.slice(0, 120)}`);
+  } finally {
+    setEnriching(false);
+  }
+}
+
+function activeTransactions() { return state.transactions.filter(t => !t.isRefunded); }
+function totalCharged() { return activeTransactions().reduce((s, t) => s + t.total, 0); }
+function myRealSpend() { return activeTransactions().reduce((s, t) => s + t.myShare, 0); }
+function pendingSplits() { return state.splits.filter(s => !s.isSettled); }
+function totalOwed() { return pendingSplits().reduce((s, x) => s + x.amount, 0); }
+function splitsByPerson() {
+  const map = {};
+  pendingSplits().forEach(s => { (map[s.person] = map[s.person] || []).push(s); });
+  return map;
+}
+
+/* ================================================================
+   NAVIGATION
+   ================================================================ */
+function switchPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+  renderAll();
+}
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => switchPage(item.dataset.page));
+});
+
+/* ================================================================
+   RENDER: OVERVIEW
+   ================================================================ */
+function renderOverview() {
+  document.getElementById('overviewMonth').textContent =
+    new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+
+  const spend = fmt(myRealSpend());
+  document.getElementById('heroSpend').innerHTML = `${spend.whole}<span class="cents">${spend.cents}</span>`;
+  const charged = totalCharged();
+  const savings = charged - myRealSpend();
+  document.getElementById('heroSpendSub').textContent =
+    `of ${fmtPlain(charged)} charged` + (savings > 0.01 ? ` · ${fmtPlain(savings)} covered` : '');
+
+  const owed = fmt(totalOwed());
+  document.getElementById('heroOwed').innerHTML = `${owed.whole}<span class="cents">${owed.cents}</span>`;
+
+  const peopleWrap = document.getElementById('heroPeople');
+  const names = Object.keys(splitsByPerson());
+  if (names.length) {
+    peopleWrap.innerHTML = `<div class="avatar-stack">${
+      names.slice(0, 5).map(n => `<div class="avatar">${initials(n)}</div>`).join('')
+    }</div><span style="font-size:12.5px; color:var(--ink-faint); margin-left:10px; align-self:center">${names.length} ${names.length === 1 ? 'person' : 'people'}</span>`;
+  } else {
+    peopleWrap.innerHTML = `<span style="font-size:12.5px; color:var(--ink-faint)">No outstanding splits</span>`;
+  }
+
+  const barsWrap = document.getElementById('categoryBars');
+  const spend_ = myRealSpend();
+  const byCat = CATEGORIES.map(c => ({
+    cat: c,
+    amount: activeTransactions().filter(t => t.category === c.id).reduce((s, t) => s + t.myShare, 0),
+  })).filter(x => x.amount > 0).sort((a, b) => b.amount - a.amount);
+
+  document.getElementById('categoryEmpty').style.display = byCat.length ? 'none' : 'block';
+  barsWrap.innerHTML = byCat.map(({ cat, amount }) => {
+    const pct = Math.min(100, (amount / Math.max(spend_, 1)) * 100);
+    return `<div class="cat-row">
+      <div class="cat-emoji" style="color:${cat.color}">${iconHtml(cat.icon)}</div>
+      <div class="cat-name">${cat.label}</div>
+      <div class="cat-track"><div class="cat-fill" style="width:${pct}%; background:${cat.color}"></div></div>
+      <div class="cat-amount">${fmtPlain(amount)}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   RENDER: ACTIVITY
+   ================================================================ */
+let activeFilter = 'all';
+let searchTerm = '';
+
+document.querySelectorAll('.pill').forEach(p => {
+  p.addEventListener('click', () => {
+    document.querySelectorAll('.pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    activeFilter = p.dataset.filter;
+    renderActivity();
+  });
+});
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchTerm = e.target.value.toLowerCase();
+  renderActivity();
+});
+
+function filteredTransactions() {
+  return state.transactions.filter(t => {
+    const name = (t.displayName || t.merchant).toLowerCase();
+    if (searchTerm) return name.includes(searchTerm);
+    if (activeFilter === 'split') return t.isSplit;
+    if (activeFilter === 'personal') return !t.isSplit && !t.isRefunded;
+    if (activeFilter === 'refunded') return t.isRefunded;
+    return true;
+  }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function renderDupeBanner() {
+  const wrap = document.getElementById('dupeBannerWrap');
+  const matches = state.pendingDuplicateMatches || [];
+  if (!matches.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = matches.map(m => {
+    const tx = state.transactions.find(t => t.id === m.debitId);
+    if (!tx) return '';
+    return `<div class="dupe-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 3v6h6"/></svg>
+      <div class="dupe-banner-text">Found a credit matching <b>${tx.displayName || tx.merchant}</b> (${fmtPlain(tx.total)}) — looks like a refund.</div>
+      <button class="btn btn-secondary btn-sm" data-dupe-dismiss="${m.id}">Not a refund</button>
+      <button class="btn btn-primary btn-sm" data-dupe-confirm="${m.id}">Yes, refunded</button>
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('[data-dupe-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.dupeConfirm;
+      const match = matches.find(m => m.id === id);
+      if (match) {
+        const tx = state.transactions.find(t => t.id === match.debitId);
+        if (tx) tx.isRefunded = true;
+        state.pendingDuplicateMatches = matches.filter(m => m.id !== id);
+        saveState(); renderAll();
+        showToast('Marked as refunded');
+      }
+    });
+  });
+  wrap.querySelectorAll('[data-dupe-dismiss]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.dupeDismiss;
+      state.pendingDuplicateMatches = matches.filter(m => m.id !== id);
+      saveState(); renderAll();
+    });
+  });
+}
+
+function renderActivity() {
+  renderDupeBanner();
+  const list = filteredTransactions();
+  const wrap = document.getElementById('txList');
+  document.getElementById('txEmpty').style.display = state.transactions.length ? 'none' : 'block';
+  document.getElementById('txHint').style.display = state.transactions.length ? 'block' : 'none';
+
+  wrap.innerHTML = list.map(t => {
+    const cat = catById(t.category) || catById('other');
+    const name = t.displayName || t.merchant;
+    let tag = '';
+    if (t.isRefunded) tag = `<span class="tx-tag refunded">REFUNDED</span>`;
+    else if (t.isSplit) tag = `<span class="tx-tag split">SPLIT</span>`;
+    const sub = t.isSplit && t.myShare !== t.total && !t.isRefunded
+      ? `<div class="tx-amount-sub">of ${fmtPlain(t.total)}</div>` : '';
+    return `<div class="tx-row ${t.isRefunded ? 'is-refunded' : ''}" data-tx-id="${t.id}">
+      <div class="tx-icon" style="background:${cat.color}1F; color:${cat.color}">${iconHtml(cat.icon)}</div>
+      <div class="tx-info">
+        <div class="tx-name-row">
+          <span class="tx-name">${escapeHtml(name)}</span>
+          ${tag}
+        </div>
+        <div class="tx-meta">${fmtDateShort(t.date)} · ${cat.label}</div>
+      </div>
+      <div class="tx-amounts">
+        <div class="tx-amount ${t.isRefunded ? 'refunded-amt' : ''}">${fmtPlain(t.myShare)}</div>
+        ${sub}
+      </div>
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.tx-row').forEach(row => {
+    row.addEventListener('click', e => {
+      const tx = state.transactions.find(t => t.id === row.dataset.txId);
+      if (!tx) return;
+      if (e.altKey || tx.isSplit || tx.isRefunded) {
+        openTxModal(tx);
+      } else {
+        openSplitModal(tx);
+      }
+    });
+  });
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ================================================================
+   RENDER: SPLITS
+   ================================================================ */
+let expandedPerson = null;
+
+function renderSplits() {
+  const byPerson = splitsByPerson();
+  const names = Object.keys(byPerson).sort();
+  document.getElementById('splitsEmpty').style.display = names.length ? 'none' : 'block';
+  document.getElementById('splitsCard').style.display = names.length ? 'block' : 'none';
+
+  const wrap = document.getElementById('splitsList');
+  wrap.innerHTML = names.map(name => {
+    const items = byPerson[name];
+    const total = items.reduce((s, i) => s + i.amount, 0);
+    const isOpen = expandedPerson === name;
+    return `<div>
+      <div class="person-card" data-person="${escapeHtml(name)}">
+        <div class="avatar-lg">${initials(name)}</div>
+        <div>
+          <div class="person-name">${escapeHtml(name)}</div>
+          <div class="person-sub">${items.length} item${items.length === 1 ? '' : 's'} outstanding</div>
+        </div>
+        <div class="person-amount">${fmtPlain(total)}</div>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform:rotate(${isOpen ? 90 : 0}deg); transition:transform 0.2s ease"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+      ${isOpen ? `<div style="padding:4px 20px 18px 78px; background:var(--paper)">
+        ${items.map(i => `<div class="split-detail-row">
+          <span>${escapeHtml(i.merchant)} <span style="color:var(--ink-faint)">· ${fmtDateShort(i.date)}</span></span>
+          <span style="font-family:var(--mono); font-weight:600">${fmtPlain(i.amount)}</span>
+        </div>`).join('')}
+        <button class="btn btn-secondary btn-sm" style="margin-top:12px" data-settle="${escapeHtml(name)}">Mark all settled</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.person-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const name = card.dataset.person;
+      expandedPerson = expandedPerson === name ? null : name;
+      renderSplits();
+    });
+  });
+  wrap.querySelectorAll('[data-settle]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const name = btn.dataset.settle;
+      state.splits.forEach(s => { if (s.person === name) s.isSettled = true; });
+      expandedPerson = null;
+      saveState();
+      renderAll();
+      showToast(`${name} settled`);
+    });
+  });
+}
+
+/* ================================================================
+   RENDER: DATA
+   ================================================================ */
+function renderData() {
+  document.getElementById('dataTxCount').textContent = state.transactions.length;
+  document.getElementById('dataSplitCount').textContent = state.splits.length;
+  document.getElementById('dataPeopleCount').textContent = state.people.length;
+  const bytes = new Blob([JSON.stringify(state)]).size;
+  document.getElementById('dataSize').textContent =
+    bytes < 1024 ? bytes + ' B' : (bytes / 1024).toFixed(1) + ' KB';
+}
+
+/* ================================================================
+   NAV BADGES
+   ================================================================ */
+function renderBadges() {
+  const txCount = state.transactions.length;
+  const splitCount = Object.keys(splitsByPerson()).length;
+  const txBadge = document.getElementById('navTxCount');
+  const splitBadge = document.getElementById('navSplitCount');
+  txBadge.style.display = txCount ? 'inline-block' : 'none';
+  txBadge.textContent = txCount;
+  splitBadge.style.display = splitCount ? 'inline-block' : 'none';
+  splitBadge.textContent = splitCount;
+}
+
+function renderAll() {
+  renderOverview();
+  renderActivity();
+  renderSplits();
+  renderData();
+  renderBadges();
+}
+
+/* ================================================================
+   MODAL: Add / Edit Transaction
+   ================================================================ */
+let editingTxId = null;
+let selectedCat = 'other';
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('[data-close]').forEach(btn => {
+  btn.addEventListener('click', () => closeModal(btn.dataset.close));
+});
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(ov.id); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.show').forEach(o => closeModal(o.id));
+});
+
+function renderCatGrid() {
+  const grid = document.getElementById('catGrid');
+  grid.innerHTML = CATEGORIES.map(c => `<div class="cat-chip ${selectedCat === c.id ? 'selected' : ''}" data-cat="${c.id}">
+    <span class="e">${iconHtml(c.icon)}</span>${c.label}
+  </div>`).join('');
+  grid.querySelectorAll('.cat-chip').forEach(chip => {
+    chip.addEventListener('click', () => { selectedCat = chip.dataset.cat; renderCatGrid(); });
+  });
+}
+
+function openTxModal(tx) {
+  editingTxId = tx ? tx.id : null;
+  document.getElementById('txModalTitle').textContent = tx ? 'Edit transaction' : 'Add transaction';
+  document.getElementById('txMerchant').value = tx ? (tx.displayName || tx.merchant) : '';
+  document.getElementById('txTotal').value = tx ? tx.total.toFixed(2) : '';
+  document.getElementById('txDate').value = tx ? tx.date : todayISO();
+  selectedCat = tx ? (tx.category || 'other') : 'other';
+  document.getElementById('txDeleteBtn').style.display = tx ? 'inline-flex' : 'none';
+  renderCatGrid();
+  openModal('txModalOverlay');
+  setTimeout(() => document.getElementById('txMerchant').focus(), 100);
+}
+
+document.getElementById('addTxBtn').addEventListener('click', () => openTxModal(null));
+document.getElementById('addTxBtn2').addEventListener('click', () => openTxModal(null));
+
+document.getElementById('txSaveBtn').addEventListener('click', () => {
+  const merchant = document.getElementById('txMerchant').value.trim();
+  const total = parseFloat(document.getElementById('txTotal').value);
+  const date = document.getElementById('txDate').value || todayISO();
+  if (!merchant || isNaN(total) || total <= 0) {
+    showToast('Enter a merchant and a valid amount');
+    return;
+  }
+  if (editingTxId) {
+    const tx = state.transactions.find(t => t.id === editingTxId);
+    tx.displayName = merchant;
+    tx.total = total;
+    tx.date = date;
+    tx.category = selectedCat;
+    if (!tx.isSplit) tx.myShare = total;
+    showToast('Transaction updated');
+  } else {
+    state.transactions.unshift({
+      id: uid(), merchant, displayName: merchant, date, total, myShare: total,
+      category: selectedCat, isSplit: false, isRefunded: false, people: [], isSettled: false,
+    });
+    showToast('Transaction added');
+  }
+  saveState();
+  closeModal('txModalOverlay');
+  renderAll();
+});
+
+document.getElementById('txDeleteBtn').addEventListener('click', () => {
+  if (!editingTxId) return;
+  const tx = state.transactions.find(t => t.id === editingTxId);
+  const txName = tx ? (tx.displayName || tx.merchant) : null;
+  state.transactions = state.transactions.filter(t => t.id !== editingTxId);
+  if (txName) state.splits = state.splits.filter(s => s.merchant !== txName);
+  saveState();
+  closeModal('txModalOverlay');
+  renderAll();
+  showToast('Transaction deleted');
+});
+
+/* ================================================================
+   MODAL: Split
+   ================================================================ */
+let splittingTxId = null;
+let selectedPeople = [];
+
+function renderSplitPeopleChips() {
+  const wrap = document.getElementById('splitPeopleChips');
+  wrap.innerHTML = state.people.map(p => `<div class="chip ${selectedPeople.includes(p) ? 'selected' : ''}" data-person="${escapeHtml(p)}">
+    <div class="avatar">${initials(p)}</div>${escapeHtml(p)}
+  </div>`).join('') + `<div class="chip chip-add" id="addPersonChip">+ Add person</div>`;
+
+  wrap.querySelectorAll('.chip[data-person]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const p = chip.dataset.person;
+      if (selectedPeople.includes(p)) selectedPeople = selectedPeople.filter(x => x !== p);
+      else selectedPeople.push(p);
+      renderSplitPeopleChips();
+      updateSplitSummary();
+    });
+  });
+  document.getElementById('addPersonChip').addEventListener('click', () => openModal('personModalOverlay'));
+}
+
+function updateSplitSummary() {
+  const tx = state.transactions.find(t => t.id === splittingTxId);
+  const myShare = parseFloat(document.getElementById('splitMyShare').value) || 0;
+  const total = tx ? tx.total : 0;
+  const valid = myShare > 0 && myShare <= total && selectedPeople.length > 0;
+  document.getElementById('splitSaveBtn').disabled = !valid;
+  const box = document.getElementById('splitSummary');
+  if (valid) {
+    const perPerson = (total - myShare) / selectedPeople.length;
+    box.style.display = 'block';
+    document.getElementById('splitSummaryBig').textContent =
+      `${selectedPeople.length} ${selectedPeople.length === 1 ? 'person owes' : 'people owe'} you ${fmtPlain(perPerson)} each`;
+    document.getElementById('splitSummarySmall').textContent =
+      `Total ${fmtPlain(total)} · You pay ${fmtPlain(myShare)}`;
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function openSplitModal(tx) {
+  splittingTxId = tx.id;
+  selectedPeople = [];
+  document.getElementById('splitTxName').textContent = tx.displayName || tx.merchant;
+  document.getElementById('splitTxDate').textContent = fmtDateShort(tx.date);
+  document.getElementById('splitTxTotal').textContent = fmtPlain(tx.total);
+  document.getElementById('splitMyShare').value = '';
+  renderSplitPeopleChips();
+  updateSplitSummary();
+  openModal('splitModalOverlay');
+  setTimeout(() => document.getElementById('splitMyShare').focus(), 100);
+}
+
+document.getElementById('splitMyShare').addEventListener('input', updateSplitSummary);
+
+document.getElementById('splitSaveBtn').addEventListener('click', () => {
+  const tx = state.transactions.find(t => t.id === splittingTxId);
+  if (!tx) return;
+  const myShare = parseFloat(document.getElementById('splitMyShare').value) || 0;
+  const perPerson = (tx.total - myShare) / selectedPeople.length;
+  selectedPeople.forEach(p => {
+    state.splits.push({ id: uid(), person: p, merchant: tx.displayName || tx.merchant, amount: perPerson, date: tx.date, isSettled: false });
+  });
+  tx.isSplit = true;
+  tx.people = selectedPeople.slice();
+  tx.myShare = myShare;
+  saveState();
+  closeModal('splitModalOverlay');
+  renderAll();
+  showToast('Split saved');
+});
+
+/* ================================================================
+   MODAL: Add Person
+   ================================================================ */
+document.getElementById('personSaveBtn').addEventListener('click', () => {
+  const name = document.getElementById('newPersonName').value.trim();
+  if (!name) return;
+  if (!state.people.includes(name)) state.people.push(name);
+  if (!selectedPeople.includes(name)) selectedPeople.push(name);
+  document.getElementById('newPersonName').value = '';
+  saveState();
+  closeModal('personModalOverlay');
+  renderSplitPeopleChips();
+  updateSplitSummary();
+  showToast(`Added ${name}`);
+});
+document.getElementById('newPersonName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('personSaveBtn').click();
+});
+
+/* ================================================================
+   BACKUP / RESTORE / CLEAR
+   ================================================================ */
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `splittrack-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded');
+}
+document.getElementById('exportBtn').addEventListener('click', exportBackup);
+document.getElementById('exportBtn2').addEventListener('click', exportBackup);
+
+function triggerImport() { document.getElementById('importBackupFile').click(); }
+document.getElementById('importBackupBtn').addEventListener('click', triggerImport);
+document.getElementById('importBackupBtn2').addEventListener('click', triggerImport);
+
+document.getElementById('importBackupFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!parsed.transactions || !Array.isArray(parsed.transactions)) throw new Error('bad shape');
+      state = {
+        transactions: parsed.transactions || [],
+        splits: parsed.splits || [],
+        people: parsed.people || ['Sparsh', 'Harshil', 'Uday', 'Arya'],
+        pendingDuplicateMatches: parsed.pendingDuplicateMatches || [],
+        proxyUrl: parsed.proxyUrl || state.proxyUrl || '/api/categorize',
+      };
+      saveState();
+      renderAll();
+      refreshApiKeyUI();
+      checkProxyConnectivity();
+      showToast('Backup restored');
+    } catch (err) {
+      showToast("That file doesn't look like a SplitTrack backup");
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('clearAllBtn').addEventListener('click', () => {
+  if (!confirm('This will permanently delete all transactions, splits, and people. Your saved proxy URL is kept. Export a backup first if you want to keep a copy. Continue?')) return;
+  const keepProxyUrl = state.proxyUrl;
+  state = { transactions: [], splits: [], people: ['Sparsh', 'Harshil', 'Uday', 'Arya'], pendingDuplicateMatches: [], proxyUrl: keepProxyUrl };
+  saveState();
+  renderAll();
+  showToast('All data cleared');
+});
+
+/* ================================================================
+   CSV IMPORT — wiring for the four entry points
+   ================================================================ */
+function triggerCsvImport() { document.getElementById('importCsvFile').click(); }
+document.getElementById('importCsvBtn').addEventListener('click', triggerCsvImport);
+document.getElementById('importCsvBtnTop').addEventListener('click', triggerCsvImport);
+document.getElementById('importCsvBtnActivity').addEventListener('click', triggerCsvImport);
+document.getElementById('importCsvBtn2').addEventListener('click', triggerCsvImport);
+
+document.getElementById('importCsvFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      importCSVText(reader.result, file.name);
+    } catch (err) {
+      console.error('CSV import failed:', err);
+      showToast("Couldn't read that file — make sure it's a Chase CSV export");
+    }
+  };
+  reader.onerror = () => showToast("Couldn't read that file");
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ================================================================
+   AI PROXY SETTINGS
+   ================================================================ */
+function refreshApiKeyUI() {
+  const input = document.getElementById('proxyUrlInput');
+  input.value = state.proxyUrl || '';
+  setEnriching(isEnriching); // refreshes the status text based on whether a proxy URL is set
+}
+
+document.getElementById('proxyUrlSaveBtn').addEventListener('click', () => {
+  const val = document.getElementById('proxyUrlInput').value.trim();
+  state.proxyUrl = val || '/api/categorize'; // empty input resets to the same-domain default, never truly blank
+  saveState();
+  proxyStatus = 'unknown';
+  setEnriching(false);
+  showToast(val ? 'Proxy URL saved — checking…' : 'Reset to default — checking…');
+  checkProxyConnectivity();
+});
+document.getElementById('proxyUrlInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('proxyUrlSaveBtn').click();
+});
+
+document.getElementById('reEnrichBtn').addEventListener('click', () => {
+  if (!state.proxyUrl) { showToast('Add your proxy URL first'); return; }
+  if (!state.transactions.length) { showToast('No transactions to sort yet'); return; }
+  enrichTransactions(state.transactions, true); // force = re-process every transaction, overwrite existing names too
+});
+
+document.getElementById('testProxyBtn').addEventListener('click', async () => {
+  const url = document.getElementById('proxyUrlInput').value.trim();
+  if (!url) { showToast('Enter a proxy URL first'); return; }
+  showToast('Testing…');
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions: [{ id: 'test', merchant: 'DD *DOORDASH', total: 24.5 }] }),
+    });
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = null; }
+    if (!res.ok) {
+      showToast(`Test failed: ${(body && body.error) || text.slice(0, 120)}`);
+      return;
+    }
+    if (body && body.result && body.result.test) {
+      showToast(`Connected — got "${body.result.test.displayName || '?'}" back`);
+    } else {
+      showToast('Got a response but the shape looks off — check the proxy code');
+    }
+  } catch (err) {
+    showToast(`Test failed: ${err.message}`);
+  }
+});
+
+/* ================================================================
+   SAMPLE DATA (only seeded if nothing saved yet — first run)
+   ================================================================ */
+function seedIfEmpty() {
+  if (state.transactions.length > 0) return;
+  const today = new Date();
+  const d = (offset) => { const x = new Date(today); x.setDate(x.getDate() - offset); return x.toISOString().slice(0,10); };
+  state.transactions = [
+    { id: uid(), merchant: 'ZAHAV RESTAURANT', displayName: 'Zahav', date: d(1), total: 142.50, myShare: 47.50, category: 'dining', isSplit: true, isRefunded: false, people: ['Sparsh','Harshil'], isSettled: false },
+    { id: uid(), merchant: 'UBER *EATS', displayName: 'Uber Eats', date: d(2), total: 28.40, myShare: 28.40, category: 'dining', isSplit: false, isRefunded: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'WHOLEFDS PHL', displayName: 'Whole Foods', date: d(4), total: 64.12, myShare: 64.12, category: 'groceries', isSplit: false, isRefunded: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'APPLE.COM/BILL', displayName: 'Apple Subscription', date: d(6), total: 9.99, myShare: 9.99, category: 'subscriptions', isSplit: false, isRefunded: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'SHEIN.COM', displayName: 'Shein', date: d(9), total: 53.20, myShare: 53.20, category: 'shopping', isSplit: false, isRefunded: true, people: [], isSettled: false },
+  ];
+  state.splits = [
+    { id: uid(), person: 'Sparsh', merchant: 'Zahav', amount: 47.50, date: d(1), isSettled: false },
+    { id: uid(), person: 'Harshil', merchant: 'Zahav', amount: 47.50, date: d(1), isSettled: false },
+  ];
+  saveState();
+}
+
+/* ================================================================
+   INIT
+   ================================================================ */
+loadState();
+seedIfEmpty();
+renderAll();
+refreshApiKeyUI();
+checkProxyConnectivity();
+</script>
+</body>
+</html>

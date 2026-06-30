@@ -1,0 +1,6 @@
+{
+  "name": "splittrack-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tiny serverless proxy that lets the SplitTrack web app use Claude for transaction categorization without exposing an Anthropic API key in the browser."
+}
