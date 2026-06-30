@@ -630,6 +630,33 @@ body {
 .cat-chip:hover { border-color: var(--ink); }
 .cat-chip.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+}
+.share-row + .share-row { border-top: 1px solid var(--hairline); }
+.share-row .person-label { display: flex; align-items: center; gap: 10px; flex: 1; font-size: 14px; font-weight: 500; }
+.share-stepper { display: flex; align-items: center; gap: 10px; }
+.share-stepper button {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hairline-strong);
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+.share-stepper button:hover { border-color: var(--ink); background: var(--hairline); }
+.share-stepper button:active { transform: scale(0.92); }
+.share-stepper .count { font-family: var(--mono); font-weight: 700; font-size: 14px; min-width: 28px; text-align: center; }
+.share-row .share-amount { font-family: var(--mono); font-size: 13px; color: var(--ink-faint); min-width: 64px; text-align: right; }
+
 .summary-box {
   background: var(--gold-soft);
   border: 1px solid #C9A22740;
@@ -1036,9 +1063,25 @@ body {
         </label>
       </div>
 
-      <div class="field-group">
-        <label class="field-label">My share ($)</label>
+      <!-- Split mode: even (auto-computed, default) vs shares (Splitwise-style proportional) -->
+      <div class="field-group" id="splitModeGroup" style="display:none">
+        <label class="field-label">How to split</label>
+        <div style="display:flex; gap:8px">
+          <button type="button" class="pill active" id="modeEvenBtn" data-split-mode="even" style="flex:1; text-align:center">Split evenly</button>
+          <button type="button" class="pill" id="modeSharesBtn" data-split-mode="shares" style="flex:1; text-align:center">Split by shares</button>
+        </div>
+      </div>
+
+      <!-- Even mode: read-only computed amount, still shown so it's never a mystery -->
+      <div class="field-group" id="evenShareGroup">
+        <label class="field-label">My share ($) <span style="font-weight:400; text-transform:none; letter-spacing:0">— auto-split evenly, edit to override</span></label>
         <input class="field-input mono" id="splitMyShare" placeholder="0.00" inputmode="decimal">
+      </div>
+
+      <!-- Shares mode: one stepper row per person, including you -->
+      <div class="field-group" id="sharesGroup" style="display:none">
+        <label class="field-label">Shares <span style="font-weight:400; text-transform:none; letter-spacing:0">— who's paying for how much of this</span></label>
+        <div id="sharesRows"></div>
       </div>
 
       <div class="summary-box" id="splitSummary" style="display:none">
@@ -1872,9 +1915,22 @@ document.getElementById('txDeleteBtn').addEventListener('click', () => {
 
 /* ================================================================
    MODAL: Split
-   ================================================================ */
+   ================================================================
+   Two modes:
+   - 'even'   (default): total ÷ (people + you), auto-computed the moment
+     people are selected. The $ field still shows the result and can be
+     hand-edited to override, but nothing needs to be typed to get a
+     correct even split.
+   - 'shares' (Splitwise-style): each person — including you — gets a
+     share count via +/- steppers. Amounts are computed proportionally:
+     person's amount = total × (their shares / total shares). Defaults to
+     1 share each when you switch into this mode from an even split. */
 let splittingTxId = null;
 let selectedPeople = [];
+let splitMode = 'even'; // 'even' | 'shares'
+let shareCounts = {};   // { personName: count }, also uses the key '__me__' for your own share count
+
+const ME_KEY = '__me__';
 
 function renderSplitPeopleChips() {
   const wrap = document.getElementById('splitPeopleChips');
@@ -1885,10 +1941,18 @@ function renderSplitPeopleChips() {
   wrap.querySelectorAll('.chip[data-person]').forEach(chip => {
     chip.addEventListener('click', () => {
       const p = chip.dataset.person;
-      if (selectedPeople.includes(p)) selectedPeople = selectedPeople.filter(x => x !== p);
-      else selectedPeople.push(p);
+      if (selectedPeople.includes(p)) {
+        selectedPeople = selectedPeople.filter(x => x !== p);
+        delete shareCounts[p];
+      } else {
+        selectedPeople.push(p);
+        shareCounts[p] = 1; // default to 1 share if/when shares mode is used
+      }
       renderSplitPeopleChips();
       updateFullyTheirsVisibility();
+      updateSplitModeVisibility();
+      applyEvenSplit(); // auto-fill the $ amount immediately on every selection change
+      if (splitMode === 'shares') renderSharesRows();
       updateSplitSummary();
     });
   });
@@ -1897,7 +1961,7 @@ function renderSplitPeopleChips() {
 
 // The "fully theirs" shortcut only makes sense with exactly one person
 // selected — splitting $0-of-mine three ways is a different, more unusual
-// case the manual share field already handles fine.
+// case the shares mode already handles fine.
 function updateFullyTheirsVisibility() {
   const row = document.getElementById('fullyTheirsRow');
   const checkbox = document.getElementById('fullyTheirsCheck');
@@ -1910,6 +1974,52 @@ function updateFullyTheirsVisibility() {
   }
 }
 
+// The even/shares mode toggle only makes sense once 2+ people are selected —
+// with exactly one person there's nothing to weight differently, the
+// "fully theirs" checkbox already covers the all-or-nothing case, and a
+// plain $ field covers any custom one-on-one split.
+function updateSplitModeVisibility() {
+  const modeGroup = document.getElementById('splitModeGroup');
+  modeGroup.style.display = selectedPeople.length >= 2 ? 'block' : 'none';
+  if (selectedPeople.length < 2 && splitMode === 'shares') {
+    setSplitMode('even'); // fall back automatically if shares mode no longer makes sense
+  }
+}
+
+function setSplitMode(mode) {
+  splitMode = mode;
+  document.getElementById('modeEvenBtn').classList.toggle('active', mode === 'even');
+  document.getElementById('modeSharesBtn').classList.toggle('active', mode === 'shares');
+  document.getElementById('evenShareGroup').style.display = mode === 'even' ? 'block' : 'none';
+  document.getElementById('sharesGroup').style.display = mode === 'shares' ? 'block' : 'none';
+  if (mode === 'even') {
+    applyEvenSplit();
+  } else {
+    if (!(ME_KEY in shareCounts)) shareCounts[ME_KEY] = 1;
+    selectedPeople.forEach(p => { if (!(p in shareCounts)) shareCounts[p] = 1; });
+    renderSharesRows();
+  }
+  updateSplitSummary();
+}
+
+document.getElementById('modeEvenBtn').addEventListener('click', () => setSplitMode('even'));
+document.getElementById('modeSharesBtn').addEventListener('click', () => setSplitMode('shares'));
+
+// Auto-computes an even split the moment people are selected — this is
+// the "should come up by itself" fix. Only overwrites the field if the
+// person hasn't hand-typed a custom value since the last selection change;
+// we treat any people-selection change as a reset point since the old
+// number no longer means anything once the group size changes.
+function applyEvenSplit() {
+  if (splitMode !== 'even') return;
+  const tx = state.transactions.find(t => t.id === splittingTxId);
+  if (!tx || selectedPeople.length === 0) return;
+  const shareInput = document.getElementById('splitMyShare');
+  if (document.getElementById('fullyTheirsCheck').checked) return; // don't fight the fully-theirs override
+  const even = tx.total / (selectedPeople.length + 1);
+  shareInput.value = even.toFixed(2);
+}
+
 document.getElementById('fullyTheirsCheck').addEventListener('change', e => {
   const shareInput = document.getElementById('splitMyShare');
   if (e.target.checked) {
@@ -1917,22 +2027,92 @@ document.getElementById('fullyTheirsCheck').addEventListener('change', e => {
     shareInput.disabled = true;
   } else {
     shareInput.disabled = false;
-    shareInput.value = '';
+    applyEvenSplit();
     shareInput.focus();
   }
   updateSplitSummary();
 });
 
+/* ---------------- Shares mode ---------------- */
+function renderSharesRows() {
+  const wrap = document.getElementById('sharesRows');
+  const rows = [{ key: ME_KEY, label: 'You' }, ...selectedPeople.map(p => ({ key: p, label: p }))];
+  wrap.innerHTML = rows.map(r => `
+    <div class="share-row" data-share-key="${escapeHtml(r.key)}">
+      <div class="person-label">
+        ${r.key === ME_KEY ? '' : `<div class="avatar">${initials(r.label)}</div>`}
+        ${escapeHtml(r.label)}
+      </div>
+      <div class="share-stepper">
+        <button type="button" data-step="-1">−</button>
+        <span class="count">${shareCounts[r.key] || 1}</span>
+        <button type="button" data-step="1">+</button>
+      </div>
+      <div class="share-amount" data-share-amount>$0.00</div>
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('.share-row').forEach(row => {
+    const key = row.dataset.shareKey;
+    row.querySelectorAll('.share-stepper button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const delta = parseInt(btn.dataset.step, 10);
+        const next = (shareCounts[key] || 1) + delta;
+        shareCounts[key] = Math.max(1, Math.min(20, next)); // 1–20 shares, sane bounds
+        renderSharesRows();
+        updateSplitSummary();
+      });
+    });
+  });
+
+  updateShareAmounts();
+}
+
+function totalShares() {
+  return Object.values(shareCounts).reduce((s, n) => s + n, 0) || 1;
+}
+
+function updateShareAmounts() {
+  const tx = state.transactions.find(t => t.id === splittingTxId);
+  if (!tx) return;
+  const total = totalShares();
+  document.querySelectorAll('#sharesRows .share-row').forEach(row => {
+    const key = row.dataset.shareKey;
+    const shares = shareCounts[key] || 1;
+    const amount = tx.total * (shares / total);
+    row.querySelector('[data-share-amount]').textContent = fmtPlain(amount);
+  });
+}
+
 function updateSplitSummary() {
   const tx = state.transactions.find(t => t.id === splittingTxId);
+  const total = tx ? tx.total : 0;
+  const box = document.getElementById('splitSummary');
+
+  if (splitMode === 'shares') {
+    updateShareAmounts();
+    const valid = selectedPeople.length > 0 && total > 0;
+    document.getElementById('splitSaveBtn').disabled = !valid;
+    if (valid) {
+      const shares = totalShares();
+      const myShares = shareCounts[ME_KEY] || 1;
+      const myAmount = total * (myShares / shares);
+      box.style.display = 'block';
+      document.getElementById('splitSummaryBig').textContent =
+        `Split ${shares} ways by shares — you pay ${fmtPlain(myAmount)}`;
+      document.getElementById('splitSummarySmall').textContent =
+        selectedPeople.map(p => `${p}: ${fmtPlain(total * ((shareCounts[p] || 1) / shares))}`).join(' · ');
+    } else {
+      box.style.display = 'none';
+    }
+    return;
+  }
+
+  // even mode
   const shareInput = document.getElementById('splitMyShare');
   const myShare = shareInput.value === '' ? NaN : parseFloat(shareInput.value);
-  const total = tx ? tx.total : 0;
-  // myShare of exactly 0 is valid (the "fully theirs" case) — only NaN or
-  // a value that doesn't fit the total is invalid.
   const valid = !isNaN(myShare) && myShare >= 0 && myShare <= total && selectedPeople.length > 0;
   document.getElementById('splitSaveBtn').disabled = !valid;
-  const box = document.getElementById('splitSummary');
   if (valid) {
     const perPerson = (total - myShare) / selectedPeople.length;
     box.style.display = 'block';
@@ -1954,6 +2134,8 @@ function updateSplitSummary() {
 function openSplitModal(tx) {
   splittingTxId = tx.id;
   selectedPeople = [];
+  shareCounts = {};
+  splitMode = 'even';
   document.getElementById('splitTxName').textContent = tx.displayName || tx.merchant;
   document.getElementById('splitTxDate').textContent = fmtDateShort(tx.date);
   document.getElementById('splitTxTotal').textContent = fmtPlain(tx.total);
@@ -1961,8 +2143,10 @@ function openSplitModal(tx) {
   shareInput.value = '';
   shareInput.disabled = false;
   document.getElementById('fullyTheirsCheck').checked = false;
+  setSplitMode('even');
   renderSplitPeopleChips();
   updateFullyTheirsVisibility();
+  updateSplitModeVisibility();
   updateSplitSummary();
   openModal('splitModalOverlay');
   setTimeout(() => shareInput.focus(), 100);
@@ -1973,10 +2157,26 @@ document.getElementById('splitMyShare').addEventListener('input', updateSplitSum
 document.getElementById('splitSaveBtn').addEventListener('click', () => {
   const tx = state.transactions.find(t => t.id === splittingTxId);
   if (!tx) return;
-  const myShare = parseFloat(document.getElementById('splitMyShare').value) || 0;
-  const perPerson = (tx.total - myShare) / selectedPeople.length;
+
+  let myShare, perPersonAmounts; // perPersonAmounts: { personName: amount }
+
+  if (splitMode === 'shares') {
+    const shares = totalShares();
+    const myShares = shareCounts[ME_KEY] || 1;
+    myShare = tx.total * (myShares / shares);
+    perPersonAmounts = {};
+    selectedPeople.forEach(p => {
+      perPersonAmounts[p] = tx.total * ((shareCounts[p] || 1) / shares);
+    });
+  } else {
+    myShare = parseFloat(document.getElementById('splitMyShare').value) || 0;
+    const perPerson = (tx.total - myShare) / selectedPeople.length;
+    perPersonAmounts = {};
+    selectedPeople.forEach(p => { perPersonAmounts[p] = perPerson; });
+  }
+
   selectedPeople.forEach(p => {
-    state.splits.push({ id: uid(), person: p, merchant: tx.displayName || tx.merchant, amount: perPerson, date: tx.date, isSettled: false });
+    state.splits.push({ id: uid(), person: p, merchant: tx.displayName || tx.merchant, amount: perPersonAmounts[p], date: tx.date, isSettled: false });
   });
   tx.isSplit = true;
   tx.people = selectedPeople.slice();
@@ -1984,7 +2184,7 @@ document.getElementById('splitSaveBtn').addEventListener('click', () => {
   saveState();
   closeModal('splitModalOverlay');
   renderAll();
-  showToast(myShare === 0 ? `Marked as fully ${selectedPeople[0]}'s` : 'Split saved');
+  showToast(myShare === 0 && selectedPeople.length === 1 ? `Marked as fully ${selectedPeople[0]}'s` : 'Split saved');
 });
 
 /* ================================================================
