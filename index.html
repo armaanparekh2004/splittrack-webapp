@@ -457,6 +457,7 @@ body {
 }
 .tx-tag.split { background: var(--gold-soft); color: #8a6b10; }
 .tx-tag.refunded { background: var(--rust-soft); color: var(--rust); }
+.tx-tag.pending { background: #2563AB14; color: #2563AB; }
 .tx-amounts { text-align: right; }
 .tx-amount { font-family: var(--mono); font-size: 14.5px; font-weight: 600; color: var(--ink); }
 .tx-amount.refunded-amt { text-decoration: line-through; color: var(--ink-faint); }
@@ -834,6 +835,7 @@ body {
           <div class="pill active" data-filter="all">All</div>
           <div class="pill" data-filter="split">Split</div>
           <div class="pill" data-filter="personal">Personal</div>
+          <div class="pill" data-filter="pending">Refund expected</div>
           <div class="pill" data-filter="refunded">Refunded</div>
         </div>
       </div>
@@ -984,6 +986,15 @@ body {
         <label class="field-label">Category</label>
         <div class="cat-grid" id="catGrid"></div>
       </div>
+      <div class="field-group" id="refundStatusGroup" style="display:none">
+        <label class="field-label">Refund status</label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button type="button" class="pill" id="refundNoneBtn" data-refund-state="none">No refund</button>
+          <button type="button" class="pill" id="refundPendingBtn" data-refund-state="pending">Refund expected</button>
+          <button type="button" class="pill" id="refundDoneBtn" data-refund-state="done">Already refunded</button>
+        </div>
+        <p id="refundStatusHelp" style="font-size:12px; color:var(--ink-faint); margin-top:8px; line-height:1.5"></p>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close="txModalOverlay">Cancel</button>
@@ -1014,13 +1025,20 @@ body {
       </div>
 
       <div class="field-group">
-        <label class="field-label">My share ($)</label>
-        <input class="field-input mono" id="splitMyShare" placeholder="0.00" inputmode="decimal">
+        <label class="field-label">Split with</label>
+        <div class="chip-grid" id="splitPeopleChips"></div>
+      </div>
+
+      <div id="fullyTheirsRow" style="display:none; margin-bottom:18px">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; padding:12px 14px; border:1.5px solid var(--hairline-strong); border-radius:10px;">
+          <input type="checkbox" id="fullyTheirsCheck" style="width:16px; height:16px; accent-color:var(--ink);">
+          <span style="font-size:13.5px; color:var(--ink-soft)">This entire charge is <span id="fullyTheirsName" style="font-weight:700; color:var(--ink)">—</span>'s — none of it is mine</span>
+        </label>
       </div>
 
       <div class="field-group">
-        <label class="field-label">Split with</label>
-        <div class="chip-grid" id="splitPeopleChips"></div>
+        <label class="field-label">My share ($)</label>
+        <input class="field-input mono" id="splitMyShare" placeholder="0.00" inputmode="decimal">
       </div>
 
       <div class="summary-box" id="splitSummary" style="display:none">
@@ -1106,7 +1124,7 @@ const catById = id => CATEGORIES.find(c => c.id === id);
 
 /* ---------------- State ---------------- */
 let state = {
-  transactions: [],   // {id, merchant, date, total, myShare, category, isSplit, isRefunded, people:[], isSettled}
+  transactions: [],   // {id, merchant, date, total, myShare, category, isSplit, isRefunded, refundPending, people:[], isSettled}
   splits: [],          // {id, person, merchant, amount, date, isSettled}
   people: ['Sparsh', 'Harshil', 'Uday', 'Arya'],
   pendingDuplicateMatches: [],  // refund/return pairs found at CSV import, awaiting confirmation
@@ -1251,7 +1269,7 @@ function parseChaseCSV(raw) {
       const category = categoryFromChase(col(row, 'Category'));
       debits.push({
         id: uid(), merchant, displayName: null, date, total: amount, myShare: amount,
-        category, isSplit: false, isRefunded: false, people: [], isSettled: false,
+        category, isSplit: false, isRefunded: false, refundPending: false, people: [], isSettled: false,
       });
     }
   }
@@ -1541,6 +1559,7 @@ function filteredTransactions() {
     if (searchTerm) return name.includes(searchTerm);
     if (activeFilter === 'split') return t.isSplit;
     if (activeFilter === 'personal') return !t.isSplit && !t.isRefunded;
+    if (activeFilter === 'pending') return t.refundPending;
     if (activeFilter === 'refunded') return t.isRefunded;
     return true;
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -1595,6 +1614,7 @@ function renderActivity() {
     const name = t.displayName || t.merchant;
     let tag = '';
     if (t.isRefunded) tag = `<span class="tx-tag refunded">REFUNDED</span>`;
+    else if (t.refundPending) tag = `<span class="tx-tag pending">REFUND EXPECTED</span>`;
     else if (t.isSplit) tag = `<span class="tx-tag split">SPLIT</span>`;
     const sub = t.isSplit && t.myShare !== t.total && !t.isRefunded
       ? `<div class="tx-amount-sub">of ${fmtPlain(t.total)}</div>` : '';
@@ -1751,6 +1771,34 @@ function renderCatGrid() {
   });
 }
 
+// Refund status is one of three mutually exclusive states, distinct from
+// each other: 'none' (normal charge), 'pending' (refund expected but not
+// landed yet — still counts toward spend, just flagged so it's not
+// forgotten), 'done' (already refunded — excluded from spend totals).
+// This is intentionally separate from isSplit, which is orthogonal.
+let selectedRefundState = 'none';
+
+const REFUND_HELP = {
+  none: '',
+  pending: 'Still counts toward your spend until the refund actually lands. Come back here and switch to "Already refunded" once it does.',
+  done: 'Excluded from your spend totals — this charge is treated as money you got back.',
+};
+
+function renderRefundButtons() {
+  ['none', 'pending', 'done'].forEach(s => {
+    const btn = document.getElementById(s === 'none' ? 'refundNoneBtn' : s === 'pending' ? 'refundPendingBtn' : 'refundDoneBtn');
+    btn.classList.toggle('active', selectedRefundState === s);
+  });
+  document.getElementById('refundStatusHelp').textContent = REFUND_HELP[selectedRefundState];
+}
+
+['refundNoneBtn', 'refundPendingBtn', 'refundDoneBtn'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    selectedRefundState = document.getElementById(id).dataset.refundState;
+    renderRefundButtons();
+  });
+});
+
 function openTxModal(tx) {
   editingTxId = tx ? tx.id : null;
   document.getElementById('txModalTitle').textContent = tx ? 'Edit transaction' : 'Add transaction';
@@ -1760,6 +1808,19 @@ function openTxModal(tx) {
   selectedCat = tx ? (tx.category || 'other') : 'other';
   document.getElementById('txDeleteBtn').style.display = tx ? 'inline-flex' : 'none';
   renderCatGrid();
+
+  // Refund status only makes sense for an existing transaction — a brand
+  // new one can't have a refund pending on it yet.
+  const refundGroup = document.getElementById('refundStatusGroup');
+  if (tx) {
+    refundGroup.style.display = 'block';
+    selectedRefundState = tx.isRefunded ? 'done' : (tx.refundPending ? 'pending' : 'none');
+  } else {
+    refundGroup.style.display = 'none';
+    selectedRefundState = 'none';
+  }
+  renderRefundButtons();
+
   openModal('txModalOverlay');
   setTimeout(() => document.getElementById('txMerchant').focus(), 100);
 }
@@ -1782,11 +1843,13 @@ document.getElementById('txSaveBtn').addEventListener('click', () => {
     tx.date = date;
     tx.category = selectedCat;
     if (!tx.isSplit) tx.myShare = total;
+    tx.isRefunded = selectedRefundState === 'done';
+    tx.refundPending = selectedRefundState === 'pending';
     showToast('Transaction updated');
   } else {
     state.transactions.unshift({
       id: uid(), merchant, displayName: merchant, date, total, myShare: total,
-      category: selectedCat, isSplit: false, isRefunded: false, people: [], isSettled: false,
+      category: selectedCat, isSplit: false, isRefunded: false, refundPending: false, people: [], isSettled: false,
     });
     showToast('Transaction added');
   }
@@ -1825,26 +1888,64 @@ function renderSplitPeopleChips() {
       if (selectedPeople.includes(p)) selectedPeople = selectedPeople.filter(x => x !== p);
       else selectedPeople.push(p);
       renderSplitPeopleChips();
+      updateFullyTheirsVisibility();
       updateSplitSummary();
     });
   });
   document.getElementById('addPersonChip').addEventListener('click', () => openModal('personModalOverlay'));
 }
 
+// The "fully theirs" shortcut only makes sense with exactly one person
+// selected — splitting $0-of-mine three ways is a different, more unusual
+// case the manual share field already handles fine.
+function updateFullyTheirsVisibility() {
+  const row = document.getElementById('fullyTheirsRow');
+  const checkbox = document.getElementById('fullyTheirsCheck');
+  if (selectedPeople.length === 1) {
+    row.style.display = 'block';
+    document.getElementById('fullyTheirsName').textContent = selectedPeople[0];
+  } else {
+    row.style.display = 'none';
+    checkbox.checked = false;
+  }
+}
+
+document.getElementById('fullyTheirsCheck').addEventListener('change', e => {
+  const shareInput = document.getElementById('splitMyShare');
+  if (e.target.checked) {
+    shareInput.value = '0';
+    shareInput.disabled = true;
+  } else {
+    shareInput.disabled = false;
+    shareInput.value = '';
+    shareInput.focus();
+  }
+  updateSplitSummary();
+});
+
 function updateSplitSummary() {
   const tx = state.transactions.find(t => t.id === splittingTxId);
-  const myShare = parseFloat(document.getElementById('splitMyShare').value) || 0;
+  const shareInput = document.getElementById('splitMyShare');
+  const myShare = shareInput.value === '' ? NaN : parseFloat(shareInput.value);
   const total = tx ? tx.total : 0;
-  const valid = myShare > 0 && myShare <= total && selectedPeople.length > 0;
+  // myShare of exactly 0 is valid (the "fully theirs" case) — only NaN or
+  // a value that doesn't fit the total is invalid.
+  const valid = !isNaN(myShare) && myShare >= 0 && myShare <= total && selectedPeople.length > 0;
   document.getElementById('splitSaveBtn').disabled = !valid;
   const box = document.getElementById('splitSummary');
   if (valid) {
     const perPerson = (total - myShare) / selectedPeople.length;
     box.style.display = 'block';
-    document.getElementById('splitSummaryBig').textContent =
-      `${selectedPeople.length} ${selectedPeople.length === 1 ? 'person owes' : 'people owe'} you ${fmtPlain(perPerson)} each`;
-    document.getElementById('splitSummarySmall').textContent =
-      `Total ${fmtPlain(total)} · You pay ${fmtPlain(myShare)}`;
+    if (myShare === 0 && selectedPeople.length === 1) {
+      document.getElementById('splitSummaryBig').textContent =
+        `${selectedPeople[0]} owes you the full ${fmtPlain(total)}`;
+      document.getElementById('splitSummarySmall').textContent = `None of this charge is yours`;
+    } else {
+      document.getElementById('splitSummaryBig').textContent =
+        `${selectedPeople.length} ${selectedPeople.length === 1 ? 'person owes' : 'people owe'} you ${fmtPlain(perPerson)} each`;
+      document.getElementById('splitSummarySmall').textContent =
+        `Total ${fmtPlain(total)} · You pay ${fmtPlain(myShare)}`;
+    }
   } else {
     box.style.display = 'none';
   }
@@ -1856,11 +1957,15 @@ function openSplitModal(tx) {
   document.getElementById('splitTxName').textContent = tx.displayName || tx.merchant;
   document.getElementById('splitTxDate').textContent = fmtDateShort(tx.date);
   document.getElementById('splitTxTotal').textContent = fmtPlain(tx.total);
-  document.getElementById('splitMyShare').value = '';
+  const shareInput = document.getElementById('splitMyShare');
+  shareInput.value = '';
+  shareInput.disabled = false;
+  document.getElementById('fullyTheirsCheck').checked = false;
   renderSplitPeopleChips();
+  updateFullyTheirsVisibility();
   updateSplitSummary();
   openModal('splitModalOverlay');
-  setTimeout(() => document.getElementById('splitMyShare').focus(), 100);
+  setTimeout(() => shareInput.focus(), 100);
 }
 
 document.getElementById('splitMyShare').addEventListener('input', updateSplitSummary);
@@ -1879,7 +1984,7 @@ document.getElementById('splitSaveBtn').addEventListener('click', () => {
   saveState();
   closeModal('splitModalOverlay');
   renderAll();
-  showToast('Split saved');
+  showToast(myShare === 0 ? `Marked as fully ${selectedPeople[0]}'s` : 'Split saved');
 });
 
 /* ================================================================
@@ -2050,11 +2155,12 @@ function seedIfEmpty() {
   const today = new Date();
   const d = (offset) => { const x = new Date(today); x.setDate(x.getDate() - offset); return x.toISOString().slice(0,10); };
   state.transactions = [
-    { id: uid(), merchant: 'ZAHAV RESTAURANT', displayName: 'Zahav', date: d(1), total: 142.50, myShare: 47.50, category: 'dining', isSplit: true, isRefunded: false, people: ['Sparsh','Harshil'], isSettled: false },
-    { id: uid(), merchant: 'UBER *EATS', displayName: 'Uber Eats', date: d(2), total: 28.40, myShare: 28.40, category: 'dining', isSplit: false, isRefunded: false, people: [], isSettled: false },
-    { id: uid(), merchant: 'WHOLEFDS PHL', displayName: 'Whole Foods', date: d(4), total: 64.12, myShare: 64.12, category: 'groceries', isSplit: false, isRefunded: false, people: [], isSettled: false },
-    { id: uid(), merchant: 'APPLE.COM/BILL', displayName: 'Apple Subscription', date: d(6), total: 9.99, myShare: 9.99, category: 'subscriptions', isSplit: false, isRefunded: false, people: [], isSettled: false },
-    { id: uid(), merchant: 'SHEIN.COM', displayName: 'Shein', date: d(9), total: 53.20, myShare: 53.20, category: 'shopping', isSplit: false, isRefunded: true, people: [], isSettled: false },
+    { id: uid(), merchant: 'ZAHAV RESTAURANT', displayName: 'Zahav', date: d(1), total: 142.50, myShare: 47.50, category: 'dining', isSplit: true, isRefunded: false, refundPending: false, people: ['Sparsh','Harshil'], isSettled: false },
+    { id: uid(), merchant: 'UBER *EATS', displayName: 'Uber Eats', date: d(2), total: 28.40, myShare: 28.40, category: 'dining', isSplit: false, isRefunded: false, refundPending: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'WHOLEFDS PHL', displayName: 'Whole Foods', date: d(4), total: 64.12, myShare: 64.12, category: 'groceries', isSplit: false, isRefunded: false, refundPending: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'APPLE.COM/BILL', displayName: 'Apple Subscription', date: d(6), total: 9.99, myShare: 9.99, category: 'subscriptions', isSplit: false, isRefunded: false, refundPending: false, people: [], isSettled: false },
+    { id: uid(), merchant: 'NIKE.COM', displayName: 'Nike', date: d(7), total: 88.00, myShare: 88.00, category: 'shopping', isSplit: false, isRefunded: false, refundPending: true, people: [], isSettled: false },
+    { id: uid(), merchant: 'SHEIN.COM', displayName: 'Shein', date: d(9), total: 53.20, myShare: 53.20, category: 'shopping', isSplit: false, isRefunded: true, refundPending: false, people: [], isSettled: false },
   ];
   state.splits = [
     { id: uid(), person: 'Sparsh', merchant: 'Zahav', amount: 47.50, date: d(1), isSettled: false },
