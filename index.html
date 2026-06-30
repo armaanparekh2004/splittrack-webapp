@@ -630,6 +630,29 @@ body {
 .cat-chip:hover { border-color: var(--ink); }
 .cat-chip.selected { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
+.relink-row {
+  padding: 12px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  background: var(--paper);
+}
+.relink-row .relink-info { font-size: 13.5px; margin-bottom: 8px; }
+.relink-row .relink-info b { font-weight: 700; }
+.relink-row .relink-info .meta { color: var(--ink-faint); font-size: 12px; }
+.relink-row select {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.relink-row .relink-actions { display: flex; gap: 8px; }
+
 .share-row {
   display: flex;
   align-items: center;
@@ -983,6 +1006,7 @@ body {
           confidently with certainty is left alone, not guessed.
         </p>
         <button class="btn btn-secondary btn-sm" id="relinkSplitsBtn">Relink old splits</button>
+        <div id="manualRelinkList" style="margin-top:16px"></div>
       </div>
 
       <div class="card card-pad">
@@ -1794,9 +1818,14 @@ function renderData() {
   document.getElementById('dataSize').textContent =
     bytes < 1024 ? bytes + ' B' : (bytes / 1024).toFixed(1) + ' KB';
 
+  // "Unlinked" badge counts everything missing a txId, including skipped
+  // ones — skip just hides a row from the manual review list, it doesn't
+  // pretend the split is actually connected to anything.
   const unlinked = state.splits.filter(s => !s.txId).length;
   const badge = document.getElementById('unlinkedSplitCount');
   badge.textContent = unlinked > 0 ? `${unlinked} unlinked` : 'all linked';
+
+  renderManualRelinkList();
 }
 
 /* ================================================================
@@ -2322,6 +2351,7 @@ function relinkOldSplits() {
   const unlinked = state.splits.filter(s => !s.txId);
   if (!unlinked.length) {
     showToast('No unlinked splits found — everything is already connected');
+    renderManualRelinkList();
     return;
   }
 
@@ -2347,19 +2377,92 @@ function relinkOldSplits() {
 
   saveState();
   renderAll();
+  renderManualRelinkList();
 
   if (linked > 0 && ambiguous > 0) {
-    showToast(`Linked ${linked} split${linked === 1 ? '' : 's'} — ${ambiguous} left unresolved (multiple possible matches)`);
+    showToast(`Linked ${linked} split${linked === 1 ? '' : 's'} — review the rest below`);
   } else if (linked > 0) {
     showToast(`Linked ${linked} split${linked === 1 ? '' : 's'} to their transactions`);
-  } else if (ambiguous > 0) {
-    showToast(`Found ${ambiguous} split${ambiguous === 1 ? '' : 's'} with multiple possible matches — left unresolved to avoid a wrong link`);
+  } else if (state.splits.some(s => !s.txId)) {
+    showToast('No automatic matches — review the list below to link manually');
   } else {
     showToast('No confident matches found for the remaining unlinked splits');
   }
 }
 
 document.getElementById('relinkSplitsBtn').addEventListener('click', relinkOldSplits);
+
+/* ---------------- Manual review for anything auto-relink couldn't resolve ----------------
+   Shown for every split still missing a txId. Each row gets a dropdown of
+   plausible transactions — any isSplit transaction with that person on it,
+   not restricted by date this time, since you're now the one confirming
+   the match rather than the algorithm guessing it. "Skip" marks it as
+   reviewed-and-intentionally-left-alone so it stops showing up here. */
+function renderManualRelinkList() {
+  const wrap = document.getElementById('manualRelinkList');
+  const stillUnlinked = state.splits.filter(s => !s.txId && !s.relinkSkipped);
+  if (!stillUnlinked.length) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  wrap.innerHTML = `<div style="font-size:12px; color:var(--ink-faint); margin-bottom:10px; font-weight:600">${stillUnlinked.length} need manual review:</div>` +
+    stillUnlinked.map(split => {
+      const candidates = state.transactions.filter(tx =>
+        tx.isSplit && Array.isArray(tx.people) && tx.people.includes(split.person)
+      );
+      const options = candidates.map(tx =>
+        `<option value="${tx.id}">${escapeHtml(tx.displayName || tx.merchant)} — ${fmtDateShort(tx.date)} — ${fmtPlain(tx.total)}</option>`
+      ).join('');
+      return `<div class="relink-row" data-split-id="${split.id}">
+        <div class="relink-info">
+          <b>${escapeHtml(split.person)}</b> owes ${fmtPlain(split.amount)} for "${escapeHtml(split.merchant)}"
+          <div class="meta">Recorded ${fmtDateShort(split.date)} — no longer linked to a transaction</div>
+        </div>
+        ${candidates.length ? `
+          <select data-relink-select>
+            <option value="">— choose the matching transaction —</option>
+            ${options}
+          </select>
+          <div class="relink-actions">
+            <button class="btn btn-primary btn-sm" data-relink-confirm>Link</button>
+            <button class="btn btn-ghost btn-sm" data-relink-skip>Skip — leave as is</button>
+          </div>
+        ` : `
+          <div class="meta" style="margin-bottom:8px">No transactions found that include ${escapeHtml(split.person)} as a split participant — it may have been deleted.</div>
+          <div class="relink-actions">
+            <button class="btn btn-ghost btn-sm" data-relink-skip>Skip — leave as is</button>
+          </div>
+        `}
+      </div>`;
+    }).join('');
+
+  wrap.querySelectorAll('[data-relink-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('.relink-row');
+      const splitId = row.dataset.splitId;
+      const select = row.querySelector('[data-relink-select]');
+      const txId = select.value;
+      if (!txId) { showToast('Pick a transaction first'); return; }
+      const split = state.splits.find(s => s.id === splitId);
+      if (split) split.txId = txId;
+      saveState();
+      renderAll();
+      renderManualRelinkList();
+      showToast('Linked');
+    });
+  });
+  wrap.querySelectorAll('[data-relink-skip]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('.relink-row');
+      const splitId = row.dataset.splitId;
+      const split = state.splits.find(s => s.id === splitId);
+      if (split) split.relinkSkipped = true; // hides it from this list without faking a link
+      saveState();
+      renderManualRelinkList();
+    });
+  });
+}
 
 document.getElementById('clearAllBtn').addEventListener('click', () => {
   if (!confirm('This will permanently delete all transactions, splits, and people. Your saved proxy URL is kept. Export a backup first if you want to keep a copy. Continue?')) return;
